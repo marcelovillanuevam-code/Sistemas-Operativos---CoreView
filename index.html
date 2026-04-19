@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CoreView — OS Scheduling &amp; Memory Simulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <nav>
+    <button data-tab="input">Input</button>
+    <button data-tab="scheduling">Scheduling</button>
+    <button data-tab="memory">Memory</button>
+    <button data-tab="paging">Page Replacement</button>
+    <button data-tab="threads">Threads</button>
+    <button data-tab="metrics">Metrics</button>
+    <button data-tab="comparison">Comparison</button>
+  </nav>
+
+  <main>
+    <div data-screen="input">
+      <h2>Input</h2>
+      <p>Define processes, threads, and memory configuration here.</p>
+    </div>
+
+    <div data-screen="scheduling">
+      <h2>Scheduling</h2>
+      <p>Scheduling algorithm visualization will appear here.</p>
+    </div>
+
+    <div data-screen="memory">
+      <h2>Memory</h2>
+      <p>Memory frame allocation grid will appear here.</p>
+    </div>
+
+    <div data-screen="paging">
+      <h2>Page Replacement</h2>
+      <p>Page replacement step-by-step trace will appear here.</p>
+    </div>
+
+    <div data-screen="threads">
+      <h2>Threads</h2>
+      <p>Thread lifecycle visualization will appear here.</p>
+    </div>
+
+    <div data-screen="metrics">
+      <h2>Metrics</h2>
+      <p>Thread and process metrics dashboard will appear here.</p>
+    </div>
+
+    <div data-screen="comparison">
+      <h2>Comparison</h2>
+      <p>Algorithm comparison charts will appear here.</p>
+    </div>
+  </main>
+
+  <script>
+    document.querySelectorAll('[data-tab]').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        var target = tab.dataset.tab;
+        document.querySelectorAll('[data-tab]').forEach(function(t) {
+          t.classList.toggle('active', t.dataset.tab === target);
+        });
+        document.querySelectorAll('[data-screen]').forEach(function(s) {
+          s.style.display = s.dataset.screen === target ? 'block' : 'none';
+        });
+      });
+    });
+    document.querySelector('[data-tab]').click();
+  </script>
+
+  <script type="module" src="app.js"></script>
+
+</body>
+</html>
