@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node tests/test-scheduling.js)"
+      "Bash(node tests/test-scheduling.js)",
+      "Bash(node tests/test-paging.js)",
+      "Bash(node tests/test-threads.js)"
     ]
   }
 }

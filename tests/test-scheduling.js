@@ -1465,6 +1465,355 @@ console.log('\n=== runMLFQ — Appendix A.9 ===');
   }
 }
 
+// ─── Multi-Threaded Test Cases (Appendix C) ─────────────────────────────────
+// C.1 shared input (multi-threaded). Validates expandToThreads pipeline,
+// join-barrier process metrics, and SchedulableEntity labels.
+
+const C1 = [
+  {
+    pid: 1, arrivalTime: 0, burstTime: 8, priority: 2,
+    sharedPages: 3, numPages: 5,
+    threads: [
+      { tid: 1, parentPid: 1, arrivalTime: 0, burstTime: 5, priority: 2, state: 'NEW', remainingTime: 5, stackPages: 1 },
+      { tid: 2, parentPid: 1, arrivalTime: 0, burstTime: 3, priority: 2, state: 'NEW', remainingTime: 3, stackPages: 1 },
+    ],
+  },
+  {
+    pid: 2, arrivalTime: 1, burstTime: 4, priority: 1,
+    sharedPages: 3, numPages: 4,
+    threads: [
+      { tid: 3, parentPid: 2, arrivalTime: 1, burstTime: 4, priority: 1, state: 'NEW', remainingTime: 4, stackPages: 1 },
+    ],
+  },
+  {
+    pid: 3, arrivalTime: 3, burstTime: 7, priority: 3,
+    sharedPages: 4, numPages: 8,
+    threads: [
+      { tid: 4, parentPid: 3, arrivalTime: 3, burstTime: 2, priority: 3, state: 'NEW', remainingTime: 2, stackPages: 1 },
+      { tid: 5, parentPid: 3, arrivalTime: 4, burstTime: 3, priority: 3, state: 'NEW', remainingTime: 3, stackPages: 2 },
+      { tid: 6, parentPid: 3, arrivalTime: 5, burstTime: 2, priority: 3, state: 'NEW', remainingTime: 2, stackPages: 1 },
+    ],
+  },
+];
+
+// ─── Page Count Verification (C.1) ───────────────────────────────────────────
+
+console.log('\n=== C.1 numPages computation (sharedPages + sum(stackPages)) ===');
+{
+  for (const p of C1) {
+    const stackSum = p.threads.reduce((s, t) => s + t.stackPages, 0);
+    const expected = p.sharedPages + stackSum;
+    assertEq(p.numPages, expected, `P${p.pid} numPages=${expected} (sharedPages=${p.sharedPages} + stackSum=${stackSum})`);
+  }
+  // Explicit assertions from prompt
+  assertEq(C1[0].numPages, 5, 'C.1 P1 numPages=5 (3 shared + 1 + 1)');
+  assertEq(C1[1].numPages, 4, 'C.1 P2 numPages=4 (3 shared + 1)');
+  assertEq(C1[2].numPages, 8, 'C.1 P3 numPages=8 (4 shared + 1 + 2 + 1)');
+}
+
+// ─── Label Verification (C.1) ────────────────────────────────────────────────
+
+console.log('\n=== C.1 expandToThreads labels ===');
+{
+  const entities = expandToThreads(C1);
+  assertEq(entities.length, 6, 'C.1 produces 6 entities (2+1+3 threads)');
+
+  // Sort order: arr, pid, tid → [tid=1(arr=0), tid=2(arr=0), tid=3(arr=1), tid=4(arr=3), tid=5(arr=4), tid=6(arr=5)]
+  const e1 = entities.find(e => e.tid === 1);
+  const e2 = entities.find(e => e.tid === 2);
+  const e3 = entities.find(e => e.tid === 3);
+  const e4 = entities.find(e => e.tid === 4);
+  const e5 = entities.find(e => e.tid === 5);
+  const e6 = entities.find(e => e.tid === 6);
+
+  assertEq(e1.label, 'P1-T1', 'tid=1 label="P1-T1" (P1 multi-threaded, local=1)');
+  assertEq(e2.label, 'P1-T2', 'tid=2 label="P1-T2" (P1 multi-threaded, local=2)');
+  assertEq(e3.label, 'P2',    'tid=3 label="P2" (P2 single-threaded, no suffix)');
+  assertEq(e4.label, 'P3-T1', 'tid=4 label="P3-T1" (P3 multi-threaded, local=1)');
+  assertEq(e5.label, 'P3-T2', 'tid=5 label="P3-T2" (P3 multi-threaded, local=2)');
+  assertEq(e6.label, 'P3-T3', 'tid=6 label="P3-T3" (P3 multi-threaded, local=3)');
+
+  // Burst/arrival sanity
+  assertEq(e1.burstTime, 5, 'tid=1 burst=5');
+  assertEq(e2.burstTime, 3, 'tid=2 burst=3');
+  assertEq(e3.burstTime, 4, 'tid=3 burst=4');
+  assertEq(e4.burstTime, 2, 'tid=4 burst=2');
+  assertEq(e5.burstTime, 3, 'tid=5 burst=3');
+  assertEq(e6.burstTime, 2, 'tid=6 burst=2');
+
+  assertEq(e4.arrivalTime, 3, 'tid=4 arr=3');
+  assertEq(e5.arrivalTime, 4, 'tid=5 arr=4');
+  assertEq(e6.arrivalTime, 5, 'tid=6 arr=5');
+}
+
+// ─── FCFS Multi-Threaded (Appendix C.2) ─────────────────────────────────────
+
+console.log('\n=== runFCFS — Appendix C.2 (multi-threaded) ===');
+{
+  const t = runFCFS(C1);
+
+  assertEq(t.algorithm, 'FCFS', 'C.2 algorithm = "FCFS"');
+
+  // Gantt: P1-T1(0-5) | P1-T2(5-8) | P2(8-12) | P3-T1(12-14) | P3-T2(14-17) | P3-T3(17-19)
+  const runAt = i => t.timeline[i]?.runningTid ?? null;
+  assertEq(runAt(0),  1, 'C.2 t=0  running tid=1 (P1-T1)');
+  assertEq(runAt(4),  1, 'C.2 t=4  running tid=1 (P1-T1)');
+  assertEq(runAt(5),  2, 'C.2 t=5  running tid=2 (P1-T2)');
+  assertEq(runAt(7),  2, 'C.2 t=7  running tid=2 (P1-T2)');
+  assertEq(runAt(8),  3, 'C.2 t=8  running tid=3 (P2)');
+  assertEq(runAt(11), 3, 'C.2 t=11 running tid=3 (P2)');
+  assertEq(runAt(12), 4, 'C.2 t=12 running tid=4 (P3-T1)');
+  assertEq(runAt(13), 4, 'C.2 t=13 running tid=4 (P3-T1)');
+  assertEq(runAt(14), 5, 'C.2 t=14 running tid=5 (P3-T2)');
+  assertEq(runAt(16), 5, 'C.2 t=16 running tid=5 (P3-T2)');
+  assertEq(runAt(17), 6, 'C.2 t=17 running tid=6 (P3-T3)');
+  assertEq(runAt(18), 6, 'C.2 t=18 running tid=6 (P3-T3)');
+
+  // Completions
+  assertEq(t.timeline[5].completedThisTick.includes(1),  true, 'C.2 t=5  tid=1 completed');
+  assertEq(t.timeline[8].completedThisTick.includes(2),  true, 'C.2 t=8  tid=2 completed');
+  assertEq(t.timeline[12].completedThisTick.includes(3), true, 'C.2 t=12 tid=3 completed');
+  assertEq(t.timeline[14].completedThisTick.includes(4), true, 'C.2 t=14 tid=4 completed');
+  assertEq(t.timeline[17].completedThisTick.includes(5), true, 'C.2 t=17 tid=5 completed');
+  assertEq(t.timeline[19].completedThisTick.includes(6), true, 'C.2 t=19 tid=6 completed');
+
+  // Arrivals at respective times
+  assertEq(t.timeline[0].arrivedThisTick.length, 2, 'C.2 t=0 two arrivals (tid=1,2)');
+  assertEq(t.timeline[1].arrivedThisTick.includes(3), true, 'C.2 t=1 tid=3 arrives');
+  assertEq(t.timeline[3].arrivedThisTick.includes(4), true, 'C.2 t=3 tid=4 arrives');
+  assertEq(t.timeline[4].arrivedThisTick.includes(5), true, 'C.2 t=4 tid=5 arrives');
+  assertEq(t.timeline[5].arrivedThisTick.includes(6), true, 'C.2 t=5 tid=6 arrives');
+
+  // Labels inside readyQueue entries (spot check)
+  // At t=4, P1-T1 still running, ready=[P1-T2, P2, P3-T1, P3-T2] (P3-T2 just arrived)
+  const rqLabels4 = t.timeline[4].readyQueue.map(e => e.label);
+  assert(rqLabels4.includes('P1-T2'), 'C.2 t=4 readyQueue has "P1-T2" label');
+  assert(rqLabels4.includes('P2'),    'C.2 t=4 readyQueue has "P2" label (single-threaded → no suffix)');
+  assert(rqLabels4.includes('P3-T1'), 'C.2 t=4 readyQueue has "P3-T1" label');
+  assert(rqLabels4.includes('P3-T2'), 'C.2 t=4 readyQueue has "P3-T2" label');
+  // At t=5, P1-T2 dispatched; ready=[P2, P3-T1, P3-T2, P3-T3]
+  const rqLabels5 = t.timeline[5].readyQueue.map(e => e.label);
+  assert(rqLabels5.includes('P3-T3'), 'C.2 t=5 readyQueue has "P3-T3" label (arrived t=5)');
+  assert(!rqLabels5.includes('P1-T2'), 'C.2 t=5 P1-T2 is running, not in readyQueue');
+
+  // Thread Metrics (C.2)
+  console.log('\n--- C.2 Thread Metrics ---');
+  const tm = t.threadMetrics;
+  assertEq(tm.length, 6, 'C.2 6 thread metrics entries');
+
+  const tm1 = tm.find(m => m.tid === 1);
+  const tm2 = tm.find(m => m.tid === 2);
+  const tm3 = tm.find(m => m.tid === 3);
+  const tm4 = tm.find(m => m.tid === 4);
+  const tm5 = tm.find(m => m.tid === 5);
+  const tm6 = tm.find(m => m.tid === 6);
+
+  assertEq(tm1.completionTime,  5,  'C.2 tid=1 P1-T1 CT=5');
+  assertEq(tm1.turnaroundTime,  5,  'C.2 tid=1 P1-T1 TAT=5');
+  assertEq(tm1.waitingTime,     0,  'C.2 tid=1 P1-T1 WT=0');
+
+  assertEq(tm2.completionTime,  8,  'C.2 tid=2 P1-T2 CT=8');
+  assertEq(tm2.turnaroundTime,  8,  'C.2 tid=2 P1-T2 TAT=8');
+  assertEq(tm2.waitingTime,     5,  'C.2 tid=2 P1-T2 WT=5');
+
+  assertEq(tm3.completionTime,  12, 'C.2 tid=3 P2    CT=12');
+  assertEq(tm3.turnaroundTime,  11, 'C.2 tid=3 P2    TAT=11');
+  assertEq(tm3.waitingTime,     7,  'C.2 tid=3 P2    WT=7');
+
+  assertEq(tm4.completionTime,  14, 'C.2 tid=4 P3-T1 CT=14');
+  assertEq(tm4.turnaroundTime,  11, 'C.2 tid=4 P3-T1 TAT=11');
+  assertEq(tm4.waitingTime,     9,  'C.2 tid=4 P3-T1 WT=9');
+
+  assertEq(tm5.completionTime,  17, 'C.2 tid=5 P3-T2 CT=17');
+  assertEq(tm5.turnaroundTime,  13, 'C.2 tid=5 P3-T2 TAT=13');
+  assertEq(tm5.waitingTime,     10, 'C.2 tid=5 P3-T2 WT=10');
+
+  assertEq(tm6.completionTime,  19, 'C.2 tid=6 P3-T3 CT=19');
+  assertEq(tm6.turnaroundTime,  14, 'C.2 tid=6 P3-T3 TAT=14');
+  assertEq(tm6.waitingTime,     12, 'C.2 tid=6 P3-T3 WT=12');
+
+  // Process Metrics (join-barrier, C.2)
+  console.log('\n--- C.2 Process Metrics (join-barrier) ---');
+  const pm = t.processMetrics;
+  assertEq(pm.length, 3, 'C.2 3 process metrics entries');
+
+  const pm1 = pm.find(m => m.pid === 1);
+  const pm2 = pm.find(m => m.pid === 2);
+  const pm3 = pm.find(m => m.pid === 3);
+
+  assertEq(pm1.completionTime,  8,  'C.2 P1 process CT=8 (max(5,8))');
+  assertEq(pm1.turnaroundTime,  8,  'C.2 P1 process TAT=8 (CT - arr=0)');
+  assertEq(pm1.waitingTime,     0,  'C.2 P1 process WT=0 (TAT=8 - burstSum(5+3))');
+
+  assertEq(pm2.completionTime,  12, 'C.2 P2 process CT=12');
+  assertEq(pm2.turnaroundTime,  11, 'C.2 P2 process TAT=11 (CT=12 - arr=1)');
+  assertEq(pm2.waitingTime,     7,  'C.2 P2 process WT=7 (TAT=11 - burst=4)');
+
+  assertEq(pm3.completionTime,  19, 'C.2 P3 process CT=19 (max(14,17,19))');
+  assertEq(pm3.turnaroundTime,  16, 'C.2 P3 process TAT=16 (CT=19 - arr=3)');
+  assertEq(pm3.waitingTime,     9,  'C.2 P3 process WT=9 (TAT=16 - burstSum(2+3+2))');
+
+  // Timeline printout
+  const lmC = new Map(expandToThreads(C1).map(e => [e.tid, e.label]));
+  const lblC = tid => lmC.get(tid) ?? `T${tid}`;
+  console.log('\n=== C.2 FCFS Timeline (multi-threaded) ===');
+  console.log('t  | running   | readyQueue                           | arrived    | completed  | cs');
+  console.log('---+-----------+--------------------------------------+------------+------------+---');
+  for (const e of t.timeline) {
+    const rq  = e.readyQueue.map(x => x.label).join(',').padEnd(36);
+    const arr = e.arrivedThisTick.map(tid => lblC(tid)).join(',').padEnd(10);
+    const cmp = e.completedThisTick.map(tid => lblC(tid)).join(',').padEnd(10);
+    const run = e.runningTid !== null ? lblC(e.runningTid).padEnd(9) : 'idle     ';
+    console.log(`${String(e.time).padStart(2)} | ${run} | ${rq} | ${arr} | ${cmp} | ${e.contextSwitch ? 'CS' : ''}`);
+  }
+}
+
+// ─── RR(q=2) Multi-Threaded (Appendix C.3) ──────────────────────────────────
+
+console.log('\n=== runRoundRobin q=2 — Appendix C.3 (multi-threaded) ===');
+{
+  const t = runRoundRobin(C1, 2);
+
+  assertEq(t.algorithm, 'RR', 'C.3 algorithm = "RR"');
+  assertEq(t.config.quantum, 2, 'C.3 config.quantum=2');
+
+  // Timeline per C.3 walkthrough
+  const runAt = i => t.timeline[i]?.runningTid ?? null;
+  assertEq(runAt(0),  1, 'C.3 t=0  running tid=1 (P1-T1)');
+  assertEq(runAt(1),  1, 'C.3 t=1  running tid=1 (P1-T1)');
+  assertEq(runAt(2),  2, 'C.3 t=2  running tid=2 (P1-T2)');
+  assertEq(runAt(3),  2, 'C.3 t=3  running tid=2 (P1-T2)');
+  assertEq(runAt(4),  3, 'C.3 t=4  running tid=3 (P2)');
+  assertEq(runAt(5),  3, 'C.3 t=5  running tid=3 (P2)');
+  assertEq(runAt(6),  1, 'C.3 t=6  running tid=1 (P1-T1 resumes)');
+  assertEq(runAt(7),  1, 'C.3 t=7  running tid=1 (P1-T1)');
+  assertEq(runAt(8),  4, 'C.3 t=8  running tid=4 (P3-T1)');
+  assertEq(runAt(9),  4, 'C.3 t=9  running tid=4 (P3-T1)');
+  assertEq(runAt(10), 5, 'C.3 t=10 running tid=5 (P3-T2, P3-T1 done)');
+  assertEq(runAt(11), 5, 'C.3 t=11 running tid=5 (P3-T2)');
+  assertEq(runAt(12), 2, 'C.3 t=12 running tid=2 (P1-T2)');
+  assertEq(runAt(13), 6, 'C.3 t=13 running tid=6 (P3-T3, P1-T2 done)');
+  assertEq(runAt(14), 6, 'C.3 t=14 running tid=6 (P3-T3)');
+  assertEq(runAt(15), 3, 'C.3 t=15 running tid=3 (P2, P3-T3 done)');
+  assertEq(runAt(16), 3, 'C.3 t=16 running tid=3 (P2)');
+  assertEq(runAt(17), 1, 'C.3 t=17 running tid=1 (P1-T1, P2 done)');
+  assertEq(runAt(18), 5, 'C.3 t=18 running tid=5 (P3-T2, P1-T1 done)');
+
+  // Ready queue ordering checks (from C.3 walkthrough)
+  const rqAt = i => t.timeline[i].readyQueue.map(e => e.tid);
+
+  // t=0: Ready=[P1-T2] = [tid=2]
+  const rq0 = rqAt(0);
+  assertEq(rq0.length, 1, 'C.3 t=0 readyQueue has 1 entry');
+  assertEq(rq0[0],     2, 'C.3 t=0 readyQueue[0]=tid=2 (P1-T2)');
+
+  // t=2: Ready=[P2, P1-T1] = [tid=3, tid=1] (arrival first, preempted last)
+  const rq2 = rqAt(2);
+  assertEq(rq2.length, 2, 'C.3 t=2 readyQueue has 2 entries');
+  assertEq(rq2[0],     3, 'C.3 t=2 readyQueue[0]=tid=3 (P2 — arrived at t=1)');
+  assertEq(rq2[1],     1, 'C.3 t=2 readyQueue[1]=tid=1 (P1-T1 — preempted, back)');
+
+  // t=4: Ready=[P1-T1, P3-T1, P3-T2, P1-T2] = [tid=1, tid=4, tid=5, tid=2]
+  const rq4 = rqAt(4);
+  assertEq(rq4.length, 4,   'C.3 t=4 readyQueue has 4 entries');
+  assertEq(rq4[0],     1,   'C.3 t=4 readyQueue[0]=tid=1 (P1-T1)');
+  assertEq(rq4[1],     4,   'C.3 t=4 readyQueue[1]=tid=4 (P3-T1, arr at t=3)');
+  assertEq(rq4[2],     5,   'C.3 t=4 readyQueue[2]=tid=5 (P3-T2, arr at t=4)');
+  assertEq(rq4[3],     2,   'C.3 t=4 readyQueue[3]=tid=2 (P1-T2 preempted, back)');
+
+  // t=6: Ready=[P3-T1, P3-T2, P1-T2, P3-T3, P2] = [tid=4, tid=5, tid=2, tid=6, tid=3]
+  const rq6 = rqAt(6);
+  assertEq(rq6.length, 5,   'C.3 t=6 readyQueue has 5 entries');
+  assertEq(rq6[0],     4,   'C.3 t=6 readyQueue[0]=tid=4 (P3-T1)');
+  assertEq(rq6[1],     5,   'C.3 t=6 readyQueue[1]=tid=5 (P3-T2)');
+  assertEq(rq6[2],     2,   'C.3 t=6 readyQueue[2]=tid=2 (P1-T2)');
+  assertEq(rq6[3],     6,   'C.3 t=6 readyQueue[3]=tid=6 (P3-T3, arr at t=5)');
+  assertEq(rq6[4],     3,   'C.3 t=6 readyQueue[4]=tid=3 (P2 preempted, back)');
+
+  // t=8: Ready=[P3-T2, P1-T2, P3-T3, P2, P1-T1] = [tid=5, tid=2, tid=6, tid=3, tid=1]
+  const rq8 = rqAt(8);
+  assertEq(rq8.length, 5, 'C.3 t=8 readyQueue has 5 entries');
+  assertEq(rq8[0], 5, 'C.3 t=8 readyQueue[0]=tid=5 (P3-T2)');
+  assertEq(rq8[1], 2, 'C.3 t=8 readyQueue[1]=tid=2 (P1-T2)');
+  assertEq(rq8[2], 6, 'C.3 t=8 readyQueue[2]=tid=6 (P3-T3)');
+  assertEq(rq8[3], 3, 'C.3 t=8 readyQueue[3]=tid=3 (P2)');
+  assertEq(rq8[4], 1, 'C.3 t=8 readyQueue[4]=tid=1 (P1-T1 preempted, back)');
+
+  // Completions at expected ticks
+  assertEq(t.timeline[10].completedThisTick.includes(4), true, 'C.3 t=10 tid=4 (P3-T1) done');
+  assertEq(t.timeline[13].completedThisTick.includes(2), true, 'C.3 t=13 tid=2 (P1-T2) done');
+  assertEq(t.timeline[15].completedThisTick.includes(6), true, 'C.3 t=15 tid=6 (P3-T3) done');
+  assertEq(t.timeline[17].completedThisTick.includes(3), true, 'C.3 t=17 tid=3 (P2) done');
+  assertEq(t.timeline[18].completedThisTick.includes(1), true, 'C.3 t=18 tid=1 (P1-T1) done');
+  assertEq(t.timeline[19].completedThisTick.includes(5), true, 'C.3 t=19 tid=5 (P3-T2) done');
+
+  // Thread Metrics (C.3)
+  console.log('\n--- C.3 Thread Metrics ---');
+  const tm = t.threadMetrics;
+  assertEq(tm.length, 6, 'C.3 6 thread metrics entries');
+
+  const tm1 = tm.find(m => m.tid === 1);
+  const tm2 = tm.find(m => m.tid === 2);
+  const tm3 = tm.find(m => m.tid === 3);
+  const tm4 = tm.find(m => m.tid === 4);
+  const tm5 = tm.find(m => m.tid === 5);
+  const tm6 = tm.find(m => m.tid === 6);
+
+  assertEq(tm1.completionTime,  18, 'C.3 tid=1 P1-T1 CT=18');
+  assertEq(tm1.turnaroundTime,  18, 'C.3 tid=1 P1-T1 TAT=18');
+  assertEq(tm1.waitingTime,     13, 'C.3 tid=1 P1-T1 WT=13');
+
+  assertEq(tm2.completionTime,  13, 'C.3 tid=2 P1-T2 CT=13');
+  assertEq(tm2.turnaroundTime,  13, 'C.3 tid=2 P1-T2 TAT=13');
+  assertEq(tm2.waitingTime,     10, 'C.3 tid=2 P1-T2 WT=10');
+
+  assertEq(tm3.completionTime,  17, 'C.3 tid=3 P2    CT=17');
+  assertEq(tm3.turnaroundTime,  16, 'C.3 tid=3 P2    TAT=16');
+  assertEq(tm3.waitingTime,     12, 'C.3 tid=3 P2    WT=12');
+
+  assertEq(tm4.completionTime,  10, 'C.3 tid=4 P3-T1 CT=10');
+  assertEq(tm4.turnaroundTime,   7, 'C.3 tid=4 P3-T1 TAT=7');
+  assertEq(tm4.waitingTime,      5, 'C.3 tid=4 P3-T1 WT=5');
+
+  assertEq(tm5.completionTime,  19, 'C.3 tid=5 P3-T2 CT=19');
+  assertEq(tm5.turnaroundTime,  15, 'C.3 tid=5 P3-T2 TAT=15');
+  assertEq(tm5.waitingTime,     12, 'C.3 tid=5 P3-T2 WT=12');
+
+  assertEq(tm6.completionTime,  15, 'C.3 tid=6 P3-T3 CT=15');
+  assertEq(tm6.turnaroundTime,  10, 'C.3 tid=6 P3-T3 TAT=10');
+  assertEq(tm6.waitingTime,      8, 'C.3 tid=6 P3-T3 WT=8');
+
+  // Process Metrics (join-barrier, C.3)
+  console.log('\n--- C.3 Process Metrics (join-barrier) ---');
+  const pm = t.processMetrics;
+  assertEq(pm.length, 3, 'C.3 3 process metrics entries');
+
+  const pm1 = pm.find(m => m.pid === 1);
+  const pm2 = pm.find(m => m.pid === 2);
+  const pm3 = pm.find(m => m.pid === 3);
+
+  assertEq(pm1.completionTime, 18, 'C.3 P1 process CT=18 (max(18,13))');
+  assertEq(pm1.turnaroundTime, 18, 'C.3 P1 process TAT=18');
+  assertEq(pm2.completionTime, 17, 'C.3 P2 process CT=17');
+  assertEq(pm2.turnaroundTime, 16, 'C.3 P2 process TAT=16');
+  assertEq(pm3.completionTime, 19, 'C.3 P3 process CT=19 (max(10,19,15))');
+  assertEq(pm3.turnaroundTime, 16, 'C.3 P3 process TAT=16');
+
+  // Timeline printout
+  const lmC = new Map(expandToThreads(C1).map(e => [e.tid, e.label]));
+  const lblC = tid => lmC.get(tid) ?? `T${tid}`;
+  console.log('\n=== C.3 RR(q=2) Timeline (multi-threaded) ===');
+  console.log('t  | running   | readyQueue                                | arrived    | completed  | cs');
+  console.log('---+-----------+-------------------------------------------+------------+------------+---');
+  for (const e of t.timeline) {
+    const rq  = e.readyQueue.map(x => x.label).join(',').padEnd(41);
+    const arr = e.arrivedThisTick.map(tid => lblC(tid)).join(',').padEnd(10);
+    const cmp = e.completedThisTick.map(tid => lblC(tid)).join(',').padEnd(10);
+    const run = e.runningTid !== null ? lblC(e.runningTid).padEnd(9) : 'idle     ';
+    console.log(`${String(e.time).padStart(2)} | ${run} | ${rq} | ${arr} | ${cmp} | ${e.contextSwitch ? 'CS' : ''}`);
+  }
+}
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${'─'.repeat(50)}`);
