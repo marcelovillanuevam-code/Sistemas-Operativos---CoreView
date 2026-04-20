@@ -2,18 +2,18 @@
 // Thread-level chips grouped inside each state node. Dashed arrows for transitions.
 
 const NODE_FILL = {
-  NEW:        '#e8e8e8',
-  READY:      '#c8e6c9',
-  RUNNING:    '#bbdefb',
-  WAITING:    '#fff9c4',
-  TERMINATED: '#d0d0d0',
+  NEW:        '#1c2130',
+  READY:      '#0d2818',
+  RUNNING:    '#0d1e33',
+  WAITING:    '#1e1a30',
+  TERMINATED: '#1a1a1f',
 };
 const NODE_STROKE = {
-  NEW:        '#9e9e9e',
-  READY:      '#43a047',
-  RUNNING:    '#1e88e5',
-  WAITING:    '#f9a825',
-  TERMINATED: '#757575',
+  NEW:        '#484f58',
+  READY:      '#238636',
+  RUNNING:    '#1f6feb',
+  WAITING:    '#7948d5',
+  TERMINATED: '#6e7681',
 };
 
 const R = 36;       // node radius
@@ -77,7 +77,7 @@ export function renderStateDiagram(ctx, processStates, previousStates, labelMap,
     ctx.stroke();
 
     ctx.font = 'bold 11px system-ui,sans-serif';
-    ctx.fillStyle = '#333';
+    ctx.fillStyle = '#e6edf3';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(state, cx, cy);
@@ -143,8 +143,8 @@ function _arrow(ctx, x1, y1, x2, y2, dashed, label) {
   const len = Math.hypot(dx, dy);
   const ux = dx / len, uy = dy / len;
 
-  ctx.strokeStyle = '#777';
-  ctx.fillStyle = '#777';
+  ctx.strokeStyle = '#484f58';
+  ctx.fillStyle = '#484f58';
   ctx.lineWidth = 1.5;
   if (dashed) ctx.setLineDash([5, 3]); else ctx.setLineDash([]);
 
@@ -166,7 +166,7 @@ function _arrow(ctx, x1, y1, x2, y2, dashed, label) {
 
   if (label) {
     ctx.font = '9px system-ui,sans-serif';
-    ctx.fillStyle = '#999';
+    ctx.fillStyle = '#6e7681';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, (x1 + x2) / 2 + uy * 12, (y1 + y2) / 2 - ux * 12);
@@ -177,7 +177,7 @@ function _arcArrow(ctx, x1, y1, x2, y2, bendY, dashed, label) {
   const cpX = (x1 + x2) / 2;
   const cpY = bendY;
 
-  ctx.strokeStyle = '#aaa';
+  ctx.strokeStyle = '#30363d';
   ctx.lineWidth = 1.5;
   if (dashed) ctx.setLineDash([5, 3]); else ctx.setLineDash([]);
   ctx.beginPath();
@@ -190,7 +190,7 @@ function _arcArrow(ctx, x1, y1, x2, y2, bendY, dashed, label) {
   const dx = x2 - cpX, dy = y2 - cpY;
   const len = Math.hypot(dx, dy);
   const ux = dx / len, uy = dy / len;
-  ctx.fillStyle = '#aaa';
+  ctx.fillStyle = '#30363d';
   const ax = x2 - ux * 9, ay = y2 - uy * 9;
   ctx.beginPath();
   ctx.moveTo(x2, y2);
@@ -201,7 +201,7 @@ function _arcArrow(ctx, x1, y1, x2, y2, bendY, dashed, label) {
 
   if (label) {
     ctx.font = '9px system-ui,sans-serif';
-    ctx.fillStyle = '#bbb';
+    ctx.fillStyle = '#484f58';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, cpX, cpY - (bendY < y1 ? -10 : 10));

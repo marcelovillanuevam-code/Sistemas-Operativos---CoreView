@@ -270,6 +270,7 @@ export function initPagingScreen() {
     if (_ctrl) _ctrl.pause();
 
     _trace = _runEngine();
+    AppState.pageReplacementTrace = _trace;
 
     const total = _trace.steps.length;
     stepTot.textContent = String(total);

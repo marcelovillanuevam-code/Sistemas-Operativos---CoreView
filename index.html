@@ -46,12 +46,44 @@
 
     <div data-screen="metrics">
       <h2>Metrics</h2>
-      <p>Thread and process metrics dashboard will appear here.</p>
+      <div id="metrics-no-data" class="screen-no-data">
+        Run a scheduling algorithm on the <strong>Scheduling</strong> tab first.
+      </div>
+      <div id="metrics-content" style="display:none">
+        <div id="metrics-dashboard"></div>
+        <div class="metrics-screen-section">
+          <div class="sched-section-title">Thread Metrics — Bar Charts (TAT / WT / RT)</div>
+          <canvas id="metrics-bar-chart"></canvas>
+        </div>
+        <div class="metrics-screen-section">
+          <div class="sched-section-title">Page Replacement Summary</div>
+          <div id="metrics-paging-info" class="metrics-paging-info"></div>
+        </div>
+      </div>
     </div>
 
     <div data-screen="comparison">
       <h2>Comparison</h2>
-      <p>Algorithm comparison charts will appear here.</p>
+      <div id="cmp-no-data" class="screen-no-data">
+        Add processes on the <strong>Input</strong> tab first.
+      </div>
+      <div id="cmp-loading" class="cmp-loading" style="display:none">
+        <span class="cmp-loading-spinner"></span>
+        <span id="cmp-loading-msg">Running algorithms…</span>
+      </div>
+      <div id="cmp-content" style="display:none">
+        <div class="cmp-section">
+          <div class="cmp-section-title">Scheduling Algorithms — Side-by-Side Avg Thread Metrics</div>
+          <div class="cmp-legend-note">★ = best for that metric &nbsp;|&nbsp; Blue = Avg Thread TAT &nbsp; Orange = Avg Thread WT &nbsp; Green = Avg Thread RT</div>
+          <canvas id="cmp-sched-chart"></canvas>
+        </div>
+        <div id="cmp-page-section" class="cmp-section">
+          <div class="cmp-section-title">Page Replacement Algorithms — Total Page Faults</div>
+          <div class="cmp-legend-note">★ = fewest faults &nbsp;|&nbsp; Percentages show hit rate</div>
+          <canvas id="cmp-page-chart"></canvas>
+        </div>
+        <div id="cmp-best-summary" class="cmp-best"></div>
+      </div>
     </div>
   </main>
 
@@ -63,7 +95,7 @@
           t.classList.toggle('active', t.dataset.tab === target);
         });
         document.querySelectorAll('[data-screen]').forEach(function(s) {
-          s.style.display = s.dataset.screen === target ? 'block' : 'none';
+          s.classList.toggle('active-screen', s.dataset.screen === target);
         });
       });
     });

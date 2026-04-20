@@ -2,14 +2,14 @@
 // Shows SchedulableEntity labels, context switch lines, time markers, current-time indicator.
 
 const COLOR_PALETTE = [
-  '#4F86C6', // blue
-  '#E07A5F', // coral
-  '#81B29A', // green
-  '#F2CC8F', // yellow
-  '#9D8DF1', // purple
-  '#E26D5C', // red
-  '#3D5A80', // navy
-  '#C08497', // pink
+  '#5b9cf6', // blue
+  '#f07b5e', // coral
+  '#6abf85', // green
+  '#f5c842', // yellow
+  '#a78bf5', // purple
+  '#ef5d52', // red
+  '#4db8c8', // teal
+  '#e8879b', // pink
 ];
 
 const MARGIN = { top: 36, right: 24, bottom: 36, left: 48 };
@@ -68,6 +68,22 @@ function buildBlocks(timeline) {
   return blocks;
 }
 
+function _roundRect(ctx, x, y, w, h, r) {
+  if (w < 2 * r) r = w / 2;
+  if (h < 2 * r) r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
 function pickTimeStep(totalTime, chartWidth) {
   const maxLabels = Math.max(2, Math.floor(chartWidth / 50));
   const raw = totalTime / maxLabels;
@@ -103,58 +119,65 @@ export function renderGanttChart(ctx, trace, currentStep, canvasWidth, canvasHei
   const blocks = buildBlocks(timeline);
 
   // Title
-  ctx.fillStyle = '#222';
-  ctx.font = 'bold 14px system-ui, sans-serif';
+  ctx.fillStyle = '#e6edf3';
+  ctx.font = 'bold 13px system-ui, sans-serif';
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
   ctx.fillText(`Gantt — ${trace.algorithm}`, MARGIN.left, 8);
 
   // Chart background
-  ctx.fillStyle = '#fafafa';
+  ctx.fillStyle = '#161b22';
   ctx.fillRect(chartX, chartY, chartW, chartH);
-  ctx.strokeStyle = '#ccc';
+  ctx.strokeStyle = '#30363d';
   ctx.lineWidth = 1;
   ctx.strokeRect(chartX, chartY, chartW, chartH);
 
-  // Blocks (with progressive reveal: dim portion ahead of currentStep)
+  const R = 3; // block corner radius
+
+  // Blocks (with progressive reveal)
   for (const block of blocks) {
     const bx = chartX + block.start * pxPerTick;
-    const bw = (block.end - block.start) * pxPerTick;
+    const bw = Math.max(1, (block.end - block.start) * pxPerTick);
     const color = colorMap.get(block.tid) || '#888';
     const label = labelMap.get(block.tid) || `TID${block.tid}`;
+    const activeEnd = Math.min(block.end, currentStep);
 
-    // Dim base
-    ctx.globalAlpha = 0.22;
+    // Dim future
+    ctx.globalAlpha = 0.18;
     ctx.fillStyle = color;
-    ctx.fillRect(bx, chartY, bw, chartH);
+    _roundRect(ctx, bx, chartY + 1, bw, chartH - 2, R);
+    ctx.fill();
     ctx.globalAlpha = 1;
 
-    // Active portion: up to currentStep
-    const activeEnd = Math.min(block.end, currentStep);
+    // Active portion
     if (activeEnd > block.start) {
-      const ax = chartX + block.start * pxPerTick;
-      const aw = (activeEnd - block.start) * pxPerTick;
+      const aw = Math.max(1, (activeEnd - block.start) * pxPerTick);
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 6;
       ctx.fillStyle = color;
-      ctx.fillRect(ax, chartY, aw, chartH);
+      _roundRect(ctx, bx, chartY + 1, aw, chartH - 2, R);
+      ctx.fill();
+      ctx.shadowBlur = 0;
     }
 
     // Block border
-    ctx.strokeStyle = '#333';
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(bx, chartY, bw, chartH);
+    _roundRect(ctx, bx, chartY + 1, bw, chartH - 2, R);
+    ctx.stroke();
 
     // Label centered
-    if (bw > 18) {
-      ctx.fillStyle = activeEnd > block.start ? '#fff' : '#444';
-      ctx.font = 'bold 12px system-ui, sans-serif';
+    if (bw > 20) {
+      ctx.fillStyle = activeEnd > block.start ? '#fff' : 'rgba(255,255,255,0.35)';
+      ctx.font = 'bold 11px ui-monospace, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(label, bx + bw / 2, chartY + chartH / 2);
     }
   }
 
-  // Context switch lines (between adjacent blocks of different tids that touch)
-  ctx.strokeStyle = '#000';
+  // Context switch lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
   ctx.lineWidth = 1.5;
   for (let i = 1; i < blocks.length; i++) {
     if (blocks[i].start === blocks[i - 1].end && blocks[i].tid !== blocks[i - 1].tid) {
@@ -168,8 +191,8 @@ export function renderGanttChart(ctx, trace, currentStep, canvasWidth, canvasHei
 
   // Time axis markers
   const step = pickTimeStep(span, chartW);
-  ctx.strokeStyle = '#888';
-  ctx.fillStyle = '#444';
+  ctx.strokeStyle = '#6e7681';
+  ctx.fillStyle = '#8b949e';
   ctx.font = '11px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -182,7 +205,6 @@ export function renderGanttChart(ctx, trace, currentStep, canvasWidth, canvasHei
     ctx.stroke();
     ctx.fillText(String(t), x, chartY + chartH + 8);
   }
-  // Always mark final tick if not on the step grid
   if (span % step !== 0) {
     const x = chartX + span * pxPerTick;
     ctx.beginPath();
@@ -194,14 +216,14 @@ export function renderGanttChart(ctx, trace, currentStep, canvasWidth, canvasHei
 
   // Current time indicator
   const cx = chartX + Math.max(0, Math.min(span, currentStep)) * pxPerTick;
-  ctx.strokeStyle = '#d33';
+  ctx.strokeStyle = '#f85149';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(cx, chartY - 4);
   ctx.lineTo(cx, chartY + chartH + 4);
   ctx.stroke();
 
-  ctx.fillStyle = '#d33';
+  ctx.fillStyle = '#f85149';
   ctx.font = 'bold 11px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';

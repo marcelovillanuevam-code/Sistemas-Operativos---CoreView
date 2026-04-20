@@ -683,7 +683,7 @@ Own AnimationController. Play/pause/step/speed.
 - Select a multi-threaded process — do all 4 visualization panels populate?
 - Select a single-threaded process — does it show 1 thread row and 1 stack?
 - Does the Thread Gantt show correct idle gaps?
-- Does the Memory Sharing View show correct page numbers matching C.4?
+- Does the Memory Sharing View show correct page numbers matching C.4?  
 - Do events match the C.4 expected event sequence?
 - Does animation step correctly across all panels simultaneously?
 

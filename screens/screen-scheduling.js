@@ -43,8 +43,8 @@ const DEFAULT_MLFQ_CONFIG = {
 };
 
 const COLOR_PALETTE = [
-  '#4F86C6','#E07A5F','#81B29A','#F2CC8F',
-  '#9D8DF1','#E26D5C','#3D5A80','#C08497',
+  '#5b9cf6', '#f07b5e', '#6abf85', '#f5c842',
+  '#a78bf5', '#ef5d52', '#4db8c8', '#e8879b',
 ];
 
 // ─── Module state ─────────────────────────────────────────────────────────────
@@ -318,6 +318,8 @@ export function initSchedulingScreen() {
 
     const key = _cacheKey(algo);
     currentTrace = _getCached(key, () => _computeTrace(algo));
+    AppState.schedulingTrace  = currentTrace;
+    AppState.currentAlgorithm = algo;
 
     labelMap = _buildLabelMap(currentTrace);
     colorMap = _buildColorMap(currentTrace);

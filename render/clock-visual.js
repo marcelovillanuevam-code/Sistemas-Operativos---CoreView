@@ -2,14 +2,14 @@
 // Arc math auto-scales to frame count (capped at 32). Pointer tween animation on advancement.
 
 const PALETTE = [
-  '#4F86C6','#E07A5F','#81B29A','#F2CC8F',
-  '#9D8DF1','#E26D5C','#3D5A80','#C08497',
+  '#5b9cf6', '#f07b5e', '#6abf85', '#f5c842',
+  '#a78bf5', '#ef5d52', '#4db8c8', '#e8879b',
 ];
 
-const EMPTY_FILL   = '#e8eaed';
-const EMPTY_TEXT   = '#aaa';
-const BORDER_COLOR = '#fff';
-const PTR_COLOR    = '#e03030';
+const EMPTY_FILL   = '#1c2130';
+const EMPTY_TEXT   = '#6e7681';
+const BORDER_COLOR = '#0d1117';
+const PTR_COLOR    = '#f85149';
 
 /**
  * @param {CanvasRenderingContext2D} ctx
@@ -70,14 +70,14 @@ export function renderClockDiagram(ctx, step, numFrames) {
     ctx.textBaseline = 'middle';
 
     if (N <= 20) {
-      ctx.fillStyle = isEmpty ? EMPTY_TEXT : '#fff';
-      ctx.font = `bold ${fontSize}px system-ui`;
+      ctx.fillStyle = isEmpty ? EMPTY_TEXT : 'rgba(255,255,255,0.9)';
+      ctx.font = `bold ${fontSize}px ui-monospace, monospace`;
       ctx.fillText(`F${i}`, tx, ty - fontSize * 0.7);
-      ctx.font = `${fontSize - 1}px system-ui`;
+      ctx.font = `${fontSize - 1}px ui-monospace, monospace`;
       ctx.fillText(isEmpty ? '—' : `pg${frame.pageNumber}`, tx, ty + fontSize * 0.5);
     } else {
-      ctx.fillStyle = isEmpty ? EMPTY_TEXT : '#fff';
-      ctx.font = `${fontSize}px system-ui`;
+      ctx.fillStyle = isEmpty ? EMPTY_TEXT : 'rgba(255,255,255,0.9)';
+      ctx.font = `${fontSize}px ui-monospace, monospace`;
       ctx.fillText(`${i}`, tx, ty);
     }
 
@@ -136,7 +136,7 @@ export function renderClockDiagram(ctx, step, numFrames) {
   // Center dot
   ctx.beginPath();
   ctx.arc(cx, cy, 5, 0, 2 * Math.PI);
-  ctx.fillStyle = '#555';
+  ctx.fillStyle = '#8b949e';
   ctx.fill();
 
   // Legend overlay (top-left)
@@ -150,16 +150,16 @@ export function renderClockDiagram(ctx, step, numFrames) {
     ctx.arc(10, 10, 5, 0, 2 * Math.PI);
     ctx.fillStyle = '#ff6b35';
     ctx.fill();
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = '#8b949e';
     ctx.fillText('R=1', 18, 6);
 
     // R=0 dot
     ctx.beginPath();
     ctx.arc(10, 26, 5, 0, 2 * Math.PI);
-    ctx.strokeStyle = '#aaa';
+    ctx.strokeStyle = '#484f58';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = '#8b949e';
     ctx.fillText('R=0', 18, 22);
   }
 
