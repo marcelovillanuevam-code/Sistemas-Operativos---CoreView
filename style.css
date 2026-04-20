@@ -37,3 +37,895 @@ main {
 [data-screen] {
   display: none;
 }
+
+.sched-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+
+.sched-controls button,
+.sched-controls select {
+  padding: 6px 12px;
+  border: 1px solid #bbb;
+  background: #f5f5f5;
+  cursor: pointer;
+  font: inherit;
+}
+
+.sched-controls button:hover {
+  background: #eaeaea;
+}
+
+.sched-controls .sched-step {
+  margin-left: auto;
+  color: #555;
+  font-size: 0.9em;
+}
+
+[data-gantt] {
+  display: block;
+  border: 1px solid #ddd;
+  background: #fff;
+  max-width: 100%;
+}
+
+/* ─── Scheduling Screen ─────────────────────────────────────────────────────── */
+
+.sched-algo-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.sched-algo-btn {
+  padding: 6px 14px;
+  border: 1px solid #bbb;
+  background: #f5f5f5;
+  cursor: pointer;
+  font: inherit;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.sched-algo-btn:hover { background: #e8e8e8; }
+.sched-algo-btn.active {
+  background: #0066cc;
+  color: #fff;
+  border-color: #004fa3;
+  font-weight: 600;
+}
+
+.sched-config-panel {
+  padding: 9px 14px;
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  font-size: 0.88em;
+  color: #555;
+}
+
+.sched-section {
+  margin-top: 18px;
+}
+.sched-section-title {
+  font-size: 0.78em;
+  font-weight: 700;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 4px;
+}
+
+/* ── Ready queue ──────────────────────────────────────── */
+.rq-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.rq-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+}
+.rq-row-label {
+  font-size: 0.75em;
+  font-weight: 700;
+  color: #999;
+  width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.rq-slot {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rq-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 4px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.84em;
+  min-width: 40px;
+  cursor: default;
+  user-select: none;
+}
+.rq-chip--running {
+  outline: 2px solid #111;
+  outline-offset: 2px;
+}
+.rq-idle {
+  color: #aaa;
+  font-style: italic;
+  font-size: 0.88em;
+}
+.rq-empty {
+  color: #bbb;
+  font-style: italic;
+  font-size: 0.88em;
+}
+
+/* ── Queue levels (MLQ/MLFQ) ─────────────────────────── */
+.sched-queue-levels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sched-ql-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+.sched-ql-label {
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #666;
+  width: 160px;
+  flex-shrink: 0;
+}
+.sched-ql-slot {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sched-ql-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 3px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8em;
+  cursor: default;
+  user-select: none;
+}
+.sched-ql-note {
+  font-size: 0.8em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-top: 3px;
+}
+.sched-ql-note--promote { background: #e8f5e9; color: #2e7d32; }
+.sched-ql-note--demote  { background: #fff3e0; color: #e65100; }
+
+/* ── State diagram canvas ───────────────────────────────── */
+#sched-state-diagram {
+  display: block;
+  border: 1px solid #ddd;
+  background: #fff;
+  max-width: 100%;
+}
+
+/* ── Metrics ─────────────────────────────────────────────── */
+.metrics-agg {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: #f8f9fa;
+  border: 1px solid #e0e4ef;
+  border-radius: 4px;
+  margin-bottom: 14px;
+  font-size: 0.88em;
+}
+.metrics-agg-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.metrics-agg-label {
+  font-size: 0.75em;
+  color: #999;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.metrics-agg-value {
+  font-size: 1.1em;
+  font-weight: 700;
+  color: #222;
+}
+.metrics-table-title {
+  font-size: 0.82em;
+  font-weight: 700;
+  color: #555;
+  margin: 12px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.metrics-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88em;
+  margin-bottom: 16px;
+}
+.metrics-tbl th {
+  background: #f0f0f0;
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #444;
+  border-bottom: 2px solid #ddd;
+  white-space: nowrap;
+}
+.metrics-tbl td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #eee;
+  color: #333;
+}
+.metrics-tbl tbody tr:hover td {
+  background: #fafafa;
+}
+.metrics-avg-row td {
+  font-weight: 700;
+  background: #f0f4ff;
+  border-top: 2px solid #c8d4f0;
+}
+
+/* ─── Input Screen ──────────────────────────────────────────────────────────── */
+
+.inp-section {
+  margin-bottom: 28px;
+}
+
+.inp-section h3 {
+  font-size: 1em;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: #333;
+}
+
+/* Toolbar */
+.inp-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+/* Buttons */
+.inp-btn {
+  padding: 6px 12px;
+  border: 1px solid #bbb;
+  background: #f5f5f5;
+  cursor: pointer;
+  font: inherit;
+  border-radius: 3px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.inp-btn:hover { background: #e8e8e8; }
+
+.inp-btn-primary {
+  background: #0066cc;
+  color: #fff;
+  border-color: #004fa3;
+  font-weight: 600;
+  padding: 8px 22px;
+  font-size: 1em;
+  border-radius: 4px;
+}
+.inp-btn-primary:hover { background: #004fa3; }
+
+.inp-btn-outline-danger {
+  background: transparent;
+  color: #c00;
+  border-color: #f5a0a0;
+}
+.inp-btn-outline-danger:hover { background: #fff0f0; }
+
+.inp-btn-sm {
+  padding: 3px 8px;
+  border: 1px solid #bbb;
+  background: #f5f5f5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82em;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.inp-btn-sm:hover { background: #e8e8e8; }
+
+.inp-btn-danger {
+  background: #e05252;
+  color: #fff;
+  border-color: #b03030;
+}
+.inp-btn-danger:hover { background: #b03030; }
+
+/* Process table */
+.inp-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 6px;
+  font-size: 0.92em;
+}
+.inp-table th,
+.inp-table td {
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  vertical-align: middle;
+  text-align: left;
+}
+.inp-table thead th {
+  background: #f0f0f0;
+  font-weight: 600;
+  color: #444;
+}
+.inp-table tbody tr:hover > td:not(.inp-thread-td) {
+  background: #fafafa;
+}
+
+.inp-pid-cell {
+  font-weight: 700;
+  color: #0066cc;
+  white-space: nowrap;
+}
+
+/* Number inputs */
+.inp-num {
+  width: 72px;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  font: inherit;
+  font-size: 0.95em;
+}
+.inp-num:focus { outline: 2px solid #4da3ff; border-color: transparent; }
+.inp-num.inp-readonly {
+  background: #f0f0f0;
+  color: #666;
+  cursor: default;
+}
+
+/* Thread column in process row */
+.inp-thread-cell {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+/* Thread container row */
+.inp-thread-td {
+  background: #f7f9fc !important;
+  padding: 10px 20px !important;
+  border-top: none !important;
+}
+
+/* Thread list header */
+.inp-thread-header {
+  display: grid;
+  grid-template-columns: 48px 110px 110px 120px auto;
+  justify-items: start;
+  gap: 8px;
+  padding: 4px 0;
+  margin-bottom: 4px;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Thread rows */
+.inp-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.inp-thread-row {
+  display: grid;
+  grid-template-columns: 48px 110px 110px 120px auto;
+  gap: 8px;
+  align-items: center;
+  justify-items: start;
+  padding: 5px 8px;
+  background: #fff;
+  border: 1px solid #dde4f0;
+  border-radius: 4px;
+}
+.inp-thread-label {
+  font-weight: 700;
+  color: #555;
+  font-size: 0.9em;
+}
+
+/* Memory configuration */
+.inp-mem-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.inp-mem-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9em;
+  color: #444;
+}
+
+.inp-frames-display {
+  display: inline-block;
+  padding: 6px 12px;
+  background: #eaf4ff;
+  border: 1px solid #a0c8f0;
+  border-radius: 4px;
+  font-weight: 600;
+  color: #0055aa;
+  white-space: nowrap;
+}
+.inp-frames-error {
+  background: #fff0f0;
+  border-color: #f0a0a0;
+  color: #c00;
+}
+
+/* Error messages */
+.inp-error {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #fff5f5;
+  border: 1px solid #f5c0c0;
+  border-radius: 4px;
+  color: #c00;
+  font-size: 0.88em;
+}
+.inp-error-item {
+  padding: 1px 0;
+}
+
+/* ─── Memory Screen ─────────────────────────────────────────────────────────── */
+
+.mem-desc {
+  font-size: 0.88em;
+  color: #555;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+.mem-summary {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  background: #f8f9fa;
+  border: 1px solid #dde4ef;
+  border-radius: 4px;
+  margin-bottom: 14px;
+  font-size: 0.88em;
+  color: #555;
+}
+
+.mem-summary-frag {
+  color: #c06000;
+}
+
+.mem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.mem-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 82px;
+  border-radius: 5px;
+  padding: 6px 4px;
+  cursor: default;
+  transition: transform 0.1s;
+  overflow: hidden;
+}
+
+.mem-frame:hover {
+  transform: scale(1.05);
+  z-index: 1;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+
+.mem-frame--empty {
+  background: #f0f0f0;
+  border: 2px dashed #ccc;
+}
+
+/* Diagonal stripe overlay for last (fragmented) frame */
+.mem-frame--frag::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 22px;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    rgba(0,0,0,0.18) 3px,
+    rgba(0,0,0,0.18) 6px
+  );
+  border-radius: 0 0 5px 5px;
+}
+
+.mem-fr-num {
+  font-size: 0.68em;
+  font-weight: 600;
+  opacity: 0.75;
+  letter-spacing: 0.03em;
+}
+
+.mem-frame--empty .mem-fr-num { color: #999; }
+
+.mem-fr-label {
+  font-size: 1.2em;
+  color: #bbb;
+}
+
+.mem-fr-pid {
+  font-size: 1em;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.mem-fr-pg {
+  font-size: 0.72em;
+  color: rgba(255,255,255,0.85);
+}
+
+.mem-fr-frag-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  font-size: 0.6em;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.9);
+  text-transform: uppercase;
+  z-index: 1;
+}
+
+.mem-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.mem-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88em;
+  font-weight: 600;
+  color: #444;
+}
+
+.mem-legend-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ─── Page Replacement Screen ───────────────────────────────────────────────── */
+
+.pg-algo-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.pg-algo-btn {
+  padding: 6px 14px;
+  border: 1px solid #bbb;
+  background: #f5f5f5;
+  cursor: pointer;
+  font: inherit;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.pg-algo-btn:hover  { background: #e8e8e8; }
+.pg-algo-btn.active {
+  background: #0066cc;
+  color: #fff;
+  border-color: #004fa3;
+  font-weight: 600;
+}
+
+/* Config panel */
+.pg-config {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.pg-config-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pg-config-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9em;
+  color: #444;
+}
+
+.pg-config-sep {
+  color: #ccc;
+}
+
+.pg-src-toggle {
+  display: flex;
+  border: 1px solid #bbb;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.pg-src-btn {
+  padding: 4px 12px;
+  border: none;
+  background: #f5f5f5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88em;
+}
+.pg-src-btn:hover  { background: #e8e8e8; }
+.pg-src-btn.active { background: #0066cc; color: #fff; font-weight: 600; }
+
+.pg-custom-input {
+  width: 320px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 0.9em;
+}
+.pg-custom-input:focus { outline: 2px solid #4da3ff; border-color: transparent; }
+
+.pg-custom-err {
+  font-size: 0.82em;
+  color: #c00;
+}
+
+/* Reference string strip */
+.pg-refstring {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  padding-top: 2px;
+  scroll-behavior: smooth;
+}
+
+.pg-ref-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 36px;
+  padding: 4px 5px;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background: #f0f0f0;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.pg-ref-step--current {
+  border-color: #f5a623;
+  background: #fff8e8;
+}
+
+.pg-ref-step--past {
+  opacity: 0.45;
+}
+
+.pg-ref-step-num {
+  font-size: 0.62em;
+  color: #999;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.pg-ref-step-page {
+  font-size: 0.9em;
+  font-weight: 700;
+  color: #333;
+  margin-top: 1px;
+}
+
+/* Hit / Fault indicator row */
+.pg-indicator {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+
+.pg-indicator-stat {
+  font-size: 0.9em;
+  color: #555;
+}
+
+/* Summary stats bar */
+.pg-stats {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 7px 14px;
+  background: #f8f9fa;
+  border: 1px solid #e0e4ef;
+  border-radius: 4px;
+  margin-bottom: 14px;
+  font-size: 0.85em;
+  color: #555;
+}
+
+/* Page replacement badges */
+.pg-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 0.78em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pg-badge--hit   { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.pg-badge--fault { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+.pg-badge--lg    { font-size: 0.95em; padding: 4px 14px; }
+
+/* Body: table + clock canvas side-by-side */
+.pg-body {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.pg-table-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.pg-clock-col {
+  flex-shrink: 0;
+}
+
+/* Page replacement table */
+.pg-table-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.pg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84em;
+}
+
+.pg-table th {
+  position: sticky;
+  top: 0;
+  background: #f0f0f0;
+  padding: 6px 8px;
+  text-align: center;
+  font-weight: 600;
+  color: #444;
+  border-bottom: 2px solid #ddd;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.pg-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #f0f0f0;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.pg-step--current td {
+  background: #fff8e8;
+  border-bottom: 1px solid #f5a623;
+}
+
+.pg-step--past td {
+  opacity: 0.55;
+}
+
+.pg-step--future td {
+  color: #888;
+}
+
+.pg-cell-num   { color: #999; font-size: 0.85em; }
+.pg-cell-faults { font-weight: 700; color: #c00; }
+.pg-cell-result { white-space: nowrap; }
+
+/* Colored chips inside table cells */
+.pg-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 3px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85em;
+  min-width: 24px;
+  text-align: center;
+}
+
+.pg-chip--empty {
+  background: #e8e8e8;
+  color: #aaa;
+  font-weight: 400;
+}
+
+/* Clock canvas border */
+#pg-clock-canvas {
+  display: block;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fafafa;
+}

@@ -34,6 +34,13 @@
 - PageRef is {pid, pageNumber}, not a raw number
 - Labels: single-threaded='P{pid}', multi-threaded='P{pid}-T{n}' where n=local index
 
+## Dev Server (REQUIRED for UI testing)
+- ES modules are blocked by browsers over file:// — always serve via HTTP
+- Start server: `python -m http.server 8765` from project root
+- URL: http://localhost:8765/
+- After every prompt that touches HTML/CSS/JS UI files, ensure the server is running and tell the user to refresh http://localhost:8765/
+- Check if already running: `curl -s -o /dev/null -w "%{http_code}" http://localhost:8765/index.html` — start it if not 200
+
 ## Deployment
 - Must run on ubiquitous.udem.edu
 - No build step, no bundler

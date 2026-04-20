@@ -3,7 +3,15 @@
     "allow": [
       "Bash(node tests/test-scheduling.js)",
       "Bash(node tests/test-paging.js)",
-      "Bash(node tests/test-threads.js)"
+      "Bash(node tests/test-threads.js)",
+      "Bash(node --check render/animation.js)",
+      "Bash(node --check render/gantt.js)",
+      "Bash(node --check screens/screen-scheduling.js)",
+      "Bash(node --check app.js)",
+      "Bash(py --version)",
+      "Bash(python -m http.server 8765)",
+      "Bash(curl *)",
+      "Bash(node *)"
     ]
   }
 }

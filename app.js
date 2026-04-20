@@ -1,8 +1,10 @@
-// app.js — Application entry point. Initialises AppState, tab navigation, and screen modules.
-
 // app.js — Application entry point. AppState is the single mutable state object.
 // Tab navigation is handled inline in index.html (plain script, works over file://).
-// Screen modules will be imported here as they are implemented.
+
+import { initInputScreen }     from './screens/screen-input.js';
+import { initSchedulingScreen } from './screens/screen-scheduling.js';
+import { initMemoryScreen }    from './screens/screen-memory.js';
+import { initPagingScreen }    from './screens/screen-paging.js';
 
 export const AppState = {
   processes: [],                // Process[] with threads
@@ -15,3 +17,8 @@ export const AppState = {
   selectedThreadPid: null,      // number | null
   comparisonResult: null,       // ComparisonResult (cached)
 };
+
+initInputScreen();
+initSchedulingScreen();
+initMemoryScreen();
+initPagingScreen();
