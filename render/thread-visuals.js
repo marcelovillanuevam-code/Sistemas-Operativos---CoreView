@@ -1,17 +1,6 @@
 // thread-visuals.js — Thread-specific renderers. Up to 8 rows (system cap).
 
-const COLOR_PALETTE = [
-  '#5b9cf6', '#f07b5e', '#6abf85', '#f5c842',
-  '#a78bf5', '#ef5d52', '#4db8c8', '#e8879b',
-];
-
-const STATE_COLORS = {
-  NEW:        '#30363d',
-  READY:      '#7a6515',
-  RUNNING:    '#1a4a2e',
-  WAITING:    '#3b2d6e',
-  TERMINATED: '#21262d',
-};
+import { pidToColor, contrastTextColor, token } from './color-utils.js';
 
 // ── Thread Gantt ─────────────────────────────────────────────────────────────
 
@@ -31,40 +20,48 @@ export function renderThreadGantt(ctx, trace, currentStep, canvasWidth, canvasHe
   const MARGIN = { top: 28, right: 20, bottom: 28, left: 70 };
   const chartW = canvasWidth  - MARGIN.left - MARGIN.right;
   const chartH = canvasHeight - MARGIN.top  - MARGIN.bottom;
-  const rowH   = chartH / n;
+  const rowH   = Math.max(28, chartH / n);
 
-  const endTime = trace.timeline[trace.timeline.length - 1].time + 1;
-  const span    = Math.max(1, endTime);
-  const pxPerTick = chartW / span;
-
+  const endTime    = trace.timeline[trace.timeline.length - 1].time + 1;
+  const span       = Math.max(1, endTime);
+  const pxPerTick  = chartW / span;
   const currentTime = currentStep < trace.timeline.length
     ? trace.timeline[currentStep].time
     : span;
 
+  const cBg       = token('--bg-surface');
+  const cSubtle   = token('--border-subtle');
+  const cBorder   = token('--border-default');
+  const cPrimary  = token('--text-primary');
+  const cSecondary= token('--text-secondary');
+  const cTertiary = token('--text-tertiary');
+  const cAccent   = token('--accent');
+  const fontMono  = `'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace`;
+
   // Title
-  ctx.fillStyle = '#e6edf3';
-  ctx.font = 'bold 13px system-ui, sans-serif';
+  ctx.fillStyle = cPrimary;
+  ctx.font = `500 13px ${fontMono}`;
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
   ctx.fillText('Thread Gantt', MARGIN.left, 6);
 
   for (let ri = 0; ri < n; ri++) {
     const thread = threads[ri];
-    const color  = COLOR_PALETTE[ri % COLOR_PALETTE.length];
+    // Each thread gets a unique hue derived from its parent PID + local index
+    const color  = pidToColor(trace.pid * 100 + ri);
     const y0     = MARGIN.top + ri * rowH;
-    const isMulti = n > 1;
-    const label  = isMulti ? `P${trace.pid}-T${ri + 1}` : `P${trace.pid}`;
+    const label  = n > 1 ? `P${trace.pid}-T${ri + 1}` : `P${trace.pid}`;
 
-    // Row background
-    ctx.fillStyle = ri % 2 === 0 ? '#161b22' : '#1c2130';
+    // Row background (alternating subtle)
+    ctx.fillStyle = ri % 2 === 0 ? cBg : token('--bg-elevated');
     ctx.fillRect(MARGIN.left, y0, chartW, rowH);
-    ctx.strokeStyle = '#21262d';
+    ctx.strokeStyle = cSubtle;
     ctx.lineWidth = 1;
     ctx.strokeRect(MARGIN.left, y0, chartW, rowH);
 
     // Row label
-    ctx.fillStyle = '#8b949e';
-    ctx.font = 'bold 11px ui-monospace, monospace';
+    ctx.fillStyle = cSecondary;
+    ctx.font = `500 11px ${fontMono}`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, MARGIN.left - 6, y0 + rowH / 2);
@@ -76,77 +73,87 @@ export function renderThreadGantt(ctx, trace, currentStep, canvasWidth, canvasHe
       const isRunning = entry.runningTid === thread.tid;
       if (isRunning && blockStart === null) blockStart = entry.time;
       if (!isRunning && blockStart !== null) {
-        _drawGanttBlock(ctx, blockStart, entry.time, y0, rowH, pxPerTick, MARGIN.left, color, currentTime);
+        _drawGanttBlock(ctx, blockStart, entry.time, y0, rowH, pxPerTick, MARGIN.left, color, currentTime, fontMono, label);
         blockStart = null;
       }
     }
     if (blockStart !== null) {
-      _drawGanttBlock(ctx, blockStart, endTime, y0, rowH, pxPerTick, MARGIN.left, color, currentTime);
+      _drawGanttBlock(ctx, blockStart, endTime, y0, rowH, pxPerTick, MARGIN.left, color, currentTime, fontMono, label);
     }
   }
 
   // Time axis
   const step = _pickStep(span, chartW);
-  ctx.strokeStyle = '#6e7681';
-  ctx.fillStyle   = '#8b949e';
-  ctx.font        = '10px system-ui, sans-serif';
+  const axisY = MARGIN.top + n * rowH;
+  ctx.strokeStyle = cTertiary;
+  ctx.fillStyle   = cTertiary;
+  ctx.font        = `400 11px ${fontMono}`;
   ctx.textAlign   = 'center';
   ctx.textBaseline = 'top';
   ctx.lineWidth   = 1;
   for (let t = 0; t <= span; t += step) {
     const x = MARGIN.left + t * pxPerTick;
-    ctx.beginPath(); ctx.moveTo(x, MARGIN.top + chartH); ctx.lineTo(x, MARGIN.top + chartH + 4); ctx.stroke();
-    ctx.fillText(String(t), x, MARGIN.top + chartH + 6);
+    ctx.beginPath(); ctx.moveTo(x, axisY); ctx.lineTo(x, axisY + 4); ctx.stroke();
+    ctx.fillText(String(t), x, axisY + 6);
   }
   if (span % step !== 0) {
     const x = MARGIN.left + span * pxPerTick;
-    ctx.beginPath(); ctx.moveTo(x, MARGIN.top + chartH); ctx.lineTo(x, MARGIN.top + chartH + 4); ctx.stroke();
-    ctx.fillText(String(span), x, MARGIN.top + chartH + 6);
+    ctx.beginPath(); ctx.moveTo(x, axisY); ctx.lineTo(x, axisY + 4); ctx.stroke();
+    ctx.fillText(String(span), x, axisY + 6);
   }
 
-  // Current time indicator
+  // Playhead — accent line + triangle
   const cx = MARGIN.left + Math.min(span, currentTime) * pxPerTick;
-  ctx.strokeStyle = '#f85149';
+  ctx.strokeStyle = cAccent;
   ctx.lineWidth   = 2;
   ctx.beginPath();
-  ctx.moveTo(cx, MARGIN.top - 4);
-  ctx.lineTo(cx, MARGIN.top + chartH + 4);
+  ctx.moveTo(cx, MARGIN.top - 6);
+  ctx.lineTo(cx, MARGIN.top + n * rowH);
   ctx.stroke();
-  ctx.fillStyle   = '#f85149';
-  ctx.font        = 'bold 10px system-ui, sans-serif';
-  ctx.textAlign   = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText(`t=${currentTime}`, cx, MARGIN.top - 4);
+
+  const TW = 5;
+  ctx.fillStyle = cAccent;
+  ctx.beginPath();
+  ctx.moveTo(cx, MARGIN.top);
+  ctx.lineTo(cx - TW, MARGIN.top - 8);
+  ctx.lineTo(cx + TW, MARGIN.top - 8);
+  ctx.closePath();
+  ctx.fill();
 }
 
-function _drawGanttBlock(ctx, start, end, y0, rowH, pxPerTick, offsetX, color, currentTime) {
+function _drawGanttBlock(ctx, start, end, y0, rowH, pxPerTick, offsetX, color, currentTime, fontMono, label) {
   const bx = offsetX + start * pxPerTick;
   const bw = Math.max(1, (end - start) * pxPerTick);
   const activeEnd = Math.min(end, currentTime);
-  const R = 3;
+  const R = 2;
+  const PAD = 3;
 
-  // Dim future
-  ctx.globalAlpha = 0.18;
+  ctx.globalAlpha = 0.15;
   ctx.fillStyle   = color;
-  _roundRectTh(ctx, bx, y0 + 2, bw, rowH - 4, R);
+  _roundRectTh(ctx, bx, y0 + PAD, bw, rowH - PAD * 2, R);
   ctx.fill();
   ctx.globalAlpha = 1;
 
-  // Active portion
   if (activeEnd > start) {
     const aw = Math.max(1, (activeEnd - start) * pxPerTick);
-    ctx.shadowColor = color;
-    ctx.shadowBlur  = 5;
-    ctx.fillStyle   = color;
-    _roundRectTh(ctx, bx, y0 + 2, aw, rowH - 4, R);
+    ctx.fillStyle = color;
+    _roundRectTh(ctx, bx, y0 + PAD, aw, rowH - PAD * 2, R);
     ctx.fill();
-    ctx.shadowBlur  = 0;
   }
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   ctx.lineWidth   = 1;
-  _roundRectTh(ctx, bx, y0 + 2, bw, rowH - 4, R);
+  _roundRectTh(ctx, bx, y0 + PAD, bw, rowH - PAD * 2, R);
   ctx.stroke();
+
+  if (bw >= 20) {
+    const textColor = activeEnd > start ? contrastTextColor(color) : 'rgba(255,255,255,0.3)';
+    ctx.fillStyle = textColor;
+    ctx.font = `500 11px ${fontMono}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, bx + bw / 2, y0 + rowH / 2);
+  }
 }
 
 function _roundRectTh(ctx, x, y, w, h, r) {
@@ -177,12 +184,11 @@ function _pickStep(span, w) {
  * @param {HTMLElement} container
  * @param {import('../types.js').SharedResources} sr
  * @param {import('../types.js').Thread[]} threads
- * @param {number[]} activeTids   - tids whose stacks are visible (arrived)
+ * @param {number[]} activeTids
  */
 export function renderMemorySharing(container, sr, threads, activeTids) {
   container.innerHTML = '';
 
-  // Shared segments header
   const sharedWrap = document.createElement('div');
   sharedWrap.className = 'ms-shared';
 
@@ -194,14 +200,16 @@ export function renderMemorySharing(container, sr, threads, activeTids) {
   const segRow = document.createElement('div');
   segRow.className = 'ms-seg-row';
 
-  for (const [name, color, pages] of [
-    ['Code',  '#5b9cf6', sr.sharedPageNumbers.slice(0, Math.ceil(sr.sharedPageNumbers.length / 3))],
-    ['Data',  '#f07b5e', sr.sharedPageNumbers.slice(Math.ceil(sr.sharedPageNumbers.length / 3), Math.ceil(2 * sr.sharedPageNumbers.length / 3))],
-    ['Heap',  '#6abf85', sr.sharedPageNumbers.slice(Math.ceil(2 * sr.sharedPageNumbers.length / 3))],
+  // Shared segments use hues derived from page-segment index rather than the old palette
+  const SEGMENT_PIDS = [0, 1, 2]; // arbitrary seed ids for code/data/heap
+  for (const [idx, name, pages] of [
+    [0, 'Code',  sr.sharedPageNumbers.slice(0, Math.ceil(sr.sharedPageNumbers.length / 3))],
+    [1, 'Data',  sr.sharedPageNumbers.slice(Math.ceil(sr.sharedPageNumbers.length / 3), Math.ceil(2 * sr.sharedPageNumbers.length / 3))],
+    [2, 'Heap',  sr.sharedPageNumbers.slice(Math.ceil(2 * sr.sharedPageNumbers.length / 3))],
   ]) {
     const seg = document.createElement('div');
     seg.className = 'ms-segment';
-    seg.style.background = color;
+    seg.style.background = pidToColor(200 + idx);
 
     const lbl = document.createElement('div');
     lbl.className = 'ms-seg-label';
@@ -217,7 +225,6 @@ export function renderMemorySharing(container, sr, threads, activeTids) {
   sharedWrap.appendChild(segRow);
   container.appendChild(sharedWrap);
 
-  // Thread stacks
   if (activeTids.length === 0) {
     const none = document.createElement('div');
     none.className = 'ms-no-stacks';
@@ -237,14 +244,13 @@ export function renderMemorySharing(container, sr, threads, activeTids) {
 
   for (const stackInfo of sr.threadStacks) {
     if (!activeTids.includes(stackInfo.tid)) continue;
-    const thread = threads.find(t => t.tid === stackInfo.tid);
     const isMulti = threads.length > 1;
     const label = isMulti ? `T${stackInfo.localIndex} stack` : 'Stack';
+    const stackColor = pidToColor(stackInfo.localIndex * 37 + 50);
 
     const block = document.createElement('div');
     block.className = 'ms-stack-block';
-    block.style.background = COLOR_PALETTE[(stackInfo.localIndex - 1) % COLOR_PALETTE.length] + '33';
-    block.style.borderColor = COLOR_PALETTE[(stackInfo.localIndex - 1) % COLOR_PALETTE.length];
+    block.style.borderColor = stackColor;
 
     const lbl = document.createElement('div');
     lbl.className = 'ms-stack-label';
@@ -269,7 +275,7 @@ export function renderMemorySharing(container, sr, threads, activeTids) {
 // ── Thread State Diagram ──────────────────────────────────────────────────────
 
 const STATES = ['NEW', 'READY', 'RUNNING', 'WAITING', 'TERMINATED'];
-const NODE_R = 22;
+const NODE_R  = 22;
 const NODE_GAP = 16;
 
 /**
@@ -283,63 +289,72 @@ export function renderThreadStateDiagram(ctx, threads, currentStates, previousSt
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
   ctx.clearRect(0, 0, W, H);
-
   if (!threads || threads.length === 0) return;
 
-  const n = threads.length;
-  const isMulti = n > 1;
+  const cBorder   = token('--border-default');
+  const cSubtle   = token('--border-subtle');
+  const cPrimary  = token('--text-primary');
+  const cSecondary= token('--text-secondary');
+  const cTertiary = token('--text-tertiary');
+  const cElevated = token('--bg-elevated');
+  const fontMono  = `'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace`;
 
-  // Layout: each row = one thread. 5 state nodes per row.
-  const rowH  = Math.min(70, (H - 50) / n);
-  const nodeW = (NODE_R * 2 + NODE_GAP);
+  const STATE_STROKE = {
+    NEW:        token('--state-new'),
+    READY:      token('--state-ready'),
+    RUNNING:    token('--state-running'),
+    WAITING:    token('--state-waiting'),
+    TERMINATED: token('--state-finished'),
+  };
+
+  const n      = threads.length;
+  const rowH   = Math.min(70, (H - 50) / n);
+  const nodeW  = NODE_R * 2 + NODE_GAP;
   const totalW = STATES.length * nodeW - NODE_GAP;
   const startX = (W - totalW) / 2 + NODE_R;
   const MARGIN_TOP = 24;
 
   // Column headers
-  ctx.font = 'bold 10px system-ui, sans-serif';
-  ctx.fillStyle = '#6e7681';
+  ctx.font = `500 10px ${fontMono}`;
+  ctx.fillStyle = cTertiary;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   for (let ci = 0; ci < STATES.length; ci++) {
-    const cx = startX + ci * nodeW;
-    ctx.fillText(STATES[ci], cx, 6);
+    ctx.fillText(STATES[ci], startX + ci * nodeW, 6);
   }
 
   const stateMap = new Map((currentStates || []).map(s => [s.tid, s.state]));
 
   for (let ri = 0; ri < n; ri++) {
     const thread = threads[ri];
-    const isMultiT = n > 1;
-    const label  = isMultiT ? `T${ri + 1}` : `P${thread.parentPid}`;
+    const label  = n > 1 ? `T${ri + 1}` : `P${thread.parentPid}`;
     const state  = stateMap.get(thread.tid) || 'NEW';
     const cy     = MARGIN_TOP + ri * rowH + rowH / 2;
-    const color  = COLOR_PALETTE[ri % COLOR_PALETTE.length];
+    const color  = pidToColor(thread.parentPid * 100 + ri);
 
     // Row label
-    ctx.font      = 'bold 10px ui-monospace, monospace';
-    ctx.fillStyle = '#8b949e';
+    ctx.font      = `500 10px ${fontMono}`;
+    ctx.fillStyle = cSecondary;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, startX - NODE_R - 8, cy);
 
-    // Arrows between state nodes
-    ctx.strokeStyle = '#30363d';
+    // Connector lines
+    ctx.strokeStyle = cSubtle;
     ctx.lineWidth   = 1.5;
     for (let ci = 0; ci < STATES.length - 1; ci++) {
       const x1 = startX + ci * nodeW + NODE_R;
       const x2 = startX + (ci + 1) * nodeW - NODE_R;
       ctx.beginPath();
       ctx.moveTo(x1, cy);
-      ctx.lineTo(x2, cy);
+      ctx.lineTo(x2 - 6, cy);
       ctx.stroke();
-      // arrowhead
       ctx.beginPath();
       ctx.moveTo(x2, cy);
-      ctx.lineTo(x2 - 7, cy - 4);
-      ctx.lineTo(x2 - 7, cy + 4);
+      ctx.lineTo(x2 - 8, cy - 4);
+      ctx.lineTo(x2 - 8, cy + 4);
       ctx.closePath();
-      ctx.fillStyle = '#30363d';
+      ctx.fillStyle = cSubtle;
       ctx.fill();
     }
 
@@ -348,49 +363,47 @@ export function renderThreadStateDiagram(ctx, threads, currentStates, previousSt
       const s  = STATES[ci];
       const cx = startX + ci * nodeW;
       const isActive = state === s;
+      const stroke = STATE_STROKE[s];
 
       ctx.beginPath();
       ctx.arc(cx, cy, NODE_R, 0, Math.PI * 2);
-      ctx.fillStyle = isActive ? color : '#1c2130';
+      ctx.fillStyle = isActive ? color : cElevated;
       ctx.fill();
-      ctx.strokeStyle = isActive ? 'rgba(255,255,255,0.5)' : '#30363d';
+      ctx.strokeStyle = isActive ? 'rgba(255,255,255,0.4)' : stroke;
       ctx.lineWidth   = isActive ? 2 : 1;
       ctx.stroke();
 
-      ctx.fillStyle   = isActive ? '#fff' : '#484f58';
-      ctx.font        = `${isActive ? 'bold ' : ''}9px system-ui, sans-serif`;
-      ctx.textAlign   = 'center';
+      const textFill = isActive ? contrastTextColor(color) : cTertiary;
+      ctx.fillStyle    = textFill;
+      ctx.font         = `${isActive ? '600' : '400'} 9px ${fontMono}`;
+      ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
-      const short = s === 'TERMINATED' ? 'TERM' : s;
-      ctx.fillText(short, cx, cy);
+      ctx.fillText(s === 'TERMINATED' ? 'TERM' : s, cx, cy);
     }
   }
 
-  // Process summary bar at bottom
+  // Process summary bar
   const barY = MARGIN_TOP + n * rowH + 8;
   const BAR_H = 22;
-  const psColor = processState === 'TERMINATED' ? '#21262d'
-    : processState === 'RUNNING'    ? '#1a4a2e'
-    : processState === 'READY'      ? '#7a6515'
-    : '#1c2130';
-
-  ctx.fillStyle   = psColor;
-  ctx.strokeStyle = '#484f58';
-  ctx.lineWidth   = 1;
+  const stateFill = STATE_STROKE[processState] || cBorder;
   const barW = Math.min(totalW + 60, W - 40);
   const barX = (W - barW) / 2;
-  _roundRect(ctx, barX, barY, barW, BAR_H, 4);
+
+  ctx.fillStyle   = cElevated;
+  ctx.strokeStyle = stateFill;
+  ctx.lineWidth   = 1;
+  _roundRectSD(ctx, barX, barY, barW, BAR_H, 4);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle   = processState === 'NEW' ? '#8b949e' : '#e6edf3';
-  ctx.font        = 'bold 11px system-ui, sans-serif';
-  ctx.textAlign   = 'center';
+  ctx.fillStyle    = cPrimary;
+  ctx.font         = `500 11px ${fontMono}`;
+  ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(`Process state: ${processState || 'NEW'}`, W / 2, barY + BAR_H / 2);
+  ctx.fillText(`Process: ${processState || 'NEW'}`, W / 2, barY + BAR_H / 2);
 }
 
-function _roundRect(ctx, x, y, w, h, r) {
+function _roundRectSD(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.lineTo(x + w - r, y);
@@ -406,27 +419,25 @@ function _roundRect(ctx, x, y, w, h, r) {
 
 // ── Thread Event Log ──────────────────────────────────────────────────────────
 
-const EVENT_ICON = {
-  CREATED:    '🟢',
-  DISPATCHED: '▶',
-  PREEMPTED:  '⏸',
-  BLOCKED:    '🔒',
-  UNBLOCKED:  '🔓',
-  COMPLETED:  '✓',
-  JOINED:     '⛓',
+const EVENT_LABEL = {
+  CREATED:    'CREATED',
+  DISPATCHED: 'DISPATCHED',
+  PREEMPTED:  'PREEMPTED',
+  BLOCKED:    'BLOCKED',
+  UNBLOCKED:  'UNBLOCKED',
+  COMPLETED:  'COMPLETED',
+  JOINED:     'JOINED',
 };
 
 /**
  * @param {HTMLElement} container
  * @param {Array<import('../types.js').ThreadEvent & {time:number}>} events
- * @param {number} currentTime  - show events with time <= currentTime
+ * @param {number} currentTime
  */
 export function renderThreadEventLog(container, events, currentTime) {
   container.innerHTML = '';
 
   const visible = events.filter(e => e.time <= currentTime);
-
-  // Counters
   const dispatches  = visible.filter(e => e.type === 'DISPATCHED').length;
   const preemptions = visible.filter(e => e.type === 'PREEMPTED').length;
   const completions = visible.filter(e => e.type === 'COMPLETED').length;
@@ -462,7 +473,7 @@ export function renderThreadEventLog(container, events, currentTime) {
 
     const tdType = document.createElement('td');
     tdType.className = 'tel-type';
-    tdType.textContent = `${EVENT_ICON[ev.type] || ''} ${ev.type}`;
+    tdType.textContent = EVENT_LABEL[ev.type] || ev.type;
     tr.appendChild(tdType);
 
     const tdDesc = document.createElement('td');
@@ -473,7 +484,5 @@ export function renderThreadEventLog(container, events, currentTime) {
   }
   table.appendChild(tbody);
   container.appendChild(table);
-
-  // Auto-scroll to bottom
   container.scrollTop = container.scrollHeight;
 }

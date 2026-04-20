@@ -15,6 +15,7 @@ import { renderGanttChart }     from '../render/gantt.js';
 import { renderReadyQueue }     from '../render/ready-queue.js';
 import { renderStateDiagram }   from '../render/state-diagram.js';
 import { renderMetricsDashboard } from '../render/metrics-dashboard.js';
+import { pidToColor }             from '../render/color-utils.js';
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 
@@ -41,11 +42,6 @@ const DEFAULT_MLFQ_CONFIG = {
     { algorithm: 'FCFS', quantum: Infinity },
   ],
 };
-
-const COLOR_PALETTE = [
-  '#5b9cf6', '#f07b5e', '#6abf85', '#f5c842',
-  '#a78bf5', '#ef5d52', '#4db8c8', '#e8879b',
-];
 
 // ─── Module state ─────────────────────────────────────────────────────────────
 
@@ -95,9 +91,8 @@ function _buildLabelMap(trace) {
 }
 
 function _buildColorMap(trace) {
-  const tids = trace.threadMetrics.map(t => t.tid).sort((a, b) => a - b);
-  const map  = new Map();
-  tids.forEach((tid, i) => map.set(tid, COLOR_PALETTE[i % COLOR_PALETTE.length]));
+  const map = new Map();
+  for (const m of trace.threadMetrics) map.set(m.tid, pidToColor(m.pid));
   return map;
 }
 

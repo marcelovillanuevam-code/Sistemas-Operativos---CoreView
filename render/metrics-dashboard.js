@@ -1,5 +1,4 @@
-// metrics-dashboard.js — DOM renderer for dual metrics tables: Thread Metrics + Process Metrics (join-barrier).
-// Accepts an array of SchedulingTrace; renders the first trace's metrics for the scheduling screen.
+// metrics-dashboard.js — DOM renderer for dual metrics tables: Thread Metrics + Process Metrics.
 
 /**
  * @param {HTMLElement} container
@@ -10,26 +9,32 @@ export function renderMetricsDashboard(container, traces) {
   if (!traces || traces.length === 0) return;
 
   const trace = traces[0];
-  const { threadMetrics, processMetrics, aggregateMetrics, algorithm } = trace;
-
+  const { threadMetrics, processMetrics, aggregateMetrics } = trace;
   const labelMap = _buildLabelMap(threadMetrics);
+  const agg = aggregateMetrics;
 
-  // ── Aggregate stats ───────────────────────────────────────────────────────
+  // ── Aggregate metric cards ────────────────────────────────────────────────
   const aggEl = document.createElement('div');
   aggEl.className = 'metrics-agg';
-  const agg = aggregateMetrics;
+
+  // [label, value, unit]
   const aggItems = [
-    ['CPU Utilization', `${agg.cpuUtilization.toFixed(1)}%`],
-    ['Context Switches', String(agg.totalContextSwitches)],
-    ['Throughput', `${agg.throughput.toFixed(3)} /tick`],
-    ['Avg TAT',    `${agg.avgTurnaroundTime.toFixed(2)}`],
-    ['Avg WT',     `${agg.avgWaitingTime.toFixed(2)}`],
-    ['Avg RT',     `${agg.avgResponseTime.toFixed(2)}`],
+    ['CPU Utilization',  agg.cpuUtilization.toFixed(1),   '%'],
+    ['Context Switches', String(agg.totalContextSwitches), ''],
+    ['Throughput',       agg.throughput.toFixed(3),        '/tick'],
+    ['Avg TAT',          agg.avgTurnaroundTime.toFixed(2), 'ticks'],
+    ['Avg WT',           agg.avgWaitingTime.toFixed(2),    'ticks'],
+    ['Avg RT',           agg.avgResponseTime.toFixed(2),   'ticks'],
   ];
-  for (const [label, val] of aggItems) {
+
+  for (const [label, val, unit] of aggItems) {
     const item = document.createElement('div');
     item.className = 'metrics-agg-item';
-    item.innerHTML = `<span class="metrics-agg-label">${label}</span><span class="metrics-agg-value">${val}</span>`;
+    item.innerHTML =
+      `<span class="metrics-agg-label">${label}</span>` +
+      `<span class="metrics-agg-value">${val}` +
+      (unit ? `<span class="metrics-agg-unit"> ${unit}</span>` : '') +
+      `</span>`;
     aggEl.appendChild(item);
   }
   container.appendChild(aggEl);
@@ -50,8 +55,6 @@ export function renderMetricsDashboard(container, traces) {
     _f(m.waitingTime),
     _f(m.responseTime),
   ]);
-  // Averages row
-  const n = threadMetrics.length;
   tRows.push(['Average', '—', '—',
     _f(agg.avgCompletionTime),
     _f(agg.avgTurnaroundTime),
@@ -74,14 +77,12 @@ export function renderMetricsDashboard(container, traces) {
     _f(m.waitingTime),
     _f(m.responseTime),
   ]);
-
-  const pm = processMetrics;
-  const pn = pm.length;
+  const pn = processMetrics.length;
   pRows.push(['Average',
-    _f(pm.reduce((s, m) => s + m.completionTime, 0) / pn),
-    _f(pm.reduce((s, m) => s + m.turnaroundTime, 0) / pn),
-    _f(pm.reduce((s, m) => s + m.waitingTime,    0) / pn),
-    _f(pm.reduce((s, m) => s + m.responseTime,   0) / pn),
+    _f(processMetrics.reduce((s, m) => s + m.completionTime, 0) / pn),
+    _f(processMetrics.reduce((s, m) => s + m.turnaroundTime, 0) / pn),
+    _f(processMetrics.reduce((s, m) => s + m.waitingTime,    0) / pn),
+    _f(processMetrics.reduce((s, m) => s + m.responseTime,   0) / pn),
   ]);
   container.appendChild(_makeTable(pHeaders, pRows, pRows.length - 1));
 }
@@ -93,7 +94,6 @@ function _buildLabelMap(threadMetrics) {
     byPid.get(m.pid).push(m.tid);
   }
   for (const tids of byPid.values()) tids.sort((a, b) => a - b);
-
   const map = new Map();
   for (const [pid, tids] of byPid) {
     if (tids.length === 1) {

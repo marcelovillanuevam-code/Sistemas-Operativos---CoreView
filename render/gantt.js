@@ -1,16 +1,7 @@
 // gantt.js — Canvas 2D Gantt chart renderer. Consumes SchedulingTrace, renders progressively by step.
-// Shows SchedulableEntity labels, context switch lines, time markers, current-time indicator.
+// Colors are derived deterministically per PID (pidToColor). All palette values read from CSS tokens.
 
-const COLOR_PALETTE = [
-  '#5b9cf6', // blue
-  '#f07b5e', // coral
-  '#6abf85', // green
-  '#f5c842', // yellow
-  '#a78bf5', // purple
-  '#ef5d52', // red
-  '#4db8c8', // teal
-  '#e8879b', // pink
-];
+import { pidToColor, contrastTextColor, token } from './color-utils.js';
 
 const MARGIN = { top: 36, right: 24, bottom: 36, left: 48 };
 
@@ -37,12 +28,13 @@ function buildLabelMap(trace) {
 }
 
 /**
- * Stable tid → palette color (sorted tids → palette index modulo length).
+ * Stable tid → color via pidToColor(pid). All threads of the same PID share one hue.
  */
 function buildColorMap(trace) {
-  const tids = trace.threadMetrics.map(t => t.tid).sort((a, b) => a - b);
+  const tidToPid = new Map();
+  for (const tm of trace.threadMetrics) tidToPid.set(tm.tid, tm.pid);
   const map = new Map();
-  tids.forEach((tid, i) => map.set(tid, COLOR_PALETTE[i % COLOR_PALETTE.length]));
+  for (const [tid, pid] of tidToPid) map.set(tid, pidToColor(pid));
   return map;
 }
 
@@ -114,71 +106,92 @@ export function renderGanttChart(ctx, trace, currentStep, canvasWidth, canvasHei
   const chartH = canvasHeight - MARGIN.top - MARGIN.bottom;
   const pxPerTick = chartW / span;
 
-  const labelMap = buildLabelMap(trace);
-  const colorMap = buildColorMap(trace);
-  const blocks = buildBlocks(timeline);
+  const labelMap  = buildLabelMap(trace);
+  const colorMap  = buildColorMap(trace);
+  const blocks    = buildBlocks(timeline);
 
-  // Title
-  ctx.fillStyle = '#e6edf3';
-  ctx.font = 'bold 13px system-ui, sans-serif';
-  ctx.textBaseline = 'top';
-  ctx.textAlign = 'left';
-  ctx.fillText(`Gantt — ${trace.algorithm}`, MARGIN.left, 8);
+  // Read CSS tokens
+  const cBg        = token('--bg-surface');
+  const cBorder    = token('--border-default');
+  const cSubtle    = token('--border-subtle');
+  const cPrimary   = token('--text-primary');
+  const cTertiary  = token('--text-tertiary');
+  const cAccent    = token('--accent');
+  const fontMono   = `'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace`;
 
   // Chart background
-  ctx.fillStyle = '#161b22';
+  ctx.fillStyle = cBg;
   ctx.fillRect(chartX, chartY, chartW, chartH);
-  ctx.strokeStyle = '#30363d';
+  ctx.strokeStyle = cBorder;
   ctx.lineWidth = 1;
   ctx.strokeRect(chartX, chartY, chartW, chartH);
 
-  const R = 3; // block corner radius
+  // Title
+  ctx.fillStyle = cPrimary;
+  ctx.font = `500 13px ${fontMono}`;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Gantt — ${trace.algorithm}`, chartX, 8);
+
+  // Vertical grid lines every tick
+  const step = pickTimeStep(span, chartW);
+  ctx.strokeStyle = cSubtle;
+  ctx.lineWidth = 1;
+  for (let t = step; t < span; t += step) {
+    const gx = chartX + t * pxPerTick;
+    ctx.beginPath();
+    ctx.moveTo(gx, chartY);
+    ctx.lineTo(gx, chartY + chartH);
+    ctx.stroke();
+  }
+
+  const R = 2; // block corner radius (spec: 2px)
+  const BAR_PAD = 3; // vertical padding inside row
 
   // Blocks (with progressive reveal)
   for (const block of blocks) {
-    const bx = chartX + block.start * pxPerTick;
-    const bw = Math.max(1, (block.end - block.start) * pxPerTick);
+    const bx   = chartX + block.start * pxPerTick;
+    const bw   = Math.max(1, (block.end - block.start) * pxPerTick);
     const color = colorMap.get(block.tid) || '#888';
     const label = labelMap.get(block.tid) || `TID${block.tid}`;
     const activeEnd = Math.min(block.end, currentStep);
 
-    // Dim future
-    ctx.globalAlpha = 0.18;
+    // Dimmed future portion
+    ctx.globalAlpha = 0.15;
     ctx.fillStyle = color;
-    _roundRect(ctx, bx, chartY + 1, bw, chartH - 2, R);
+    _roundRect(ctx, bx, chartY + BAR_PAD, bw, chartH - BAR_PAD * 2, R);
     ctx.fill();
     ctx.globalAlpha = 1;
 
     // Active portion
     if (activeEnd > block.start) {
       const aw = Math.max(1, (activeEnd - block.start) * pxPerTick);
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 6;
       ctx.fillStyle = color;
-      _roundRect(ctx, bx, chartY + 1, aw, chartH - 2, R);
+      _roundRect(ctx, bx, chartY + BAR_PAD, aw, chartH - BAR_PAD * 2, R);
       ctx.fill();
-      ctx.shadowBlur = 0;
     }
 
     // Block border
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     ctx.lineWidth = 1;
-    _roundRect(ctx, bx, chartY + 1, bw, chartH - 2, R);
+    _roundRect(ctx, bx, chartY + BAR_PAD, bw, chartH - BAR_PAD * 2, R);
     ctx.stroke();
 
-    // Label centered
-    if (bw > 20) {
-      ctx.fillStyle = activeEnd > block.start ? '#fff' : 'rgba(255,255,255,0.35)';
-      ctx.font = 'bold 11px ui-monospace, monospace';
+    // Label — only if wide enough, hidden when too narrow (no truncation per spec)
+    const minLabelWidth = 20;
+    if (bw >= minLabelWidth) {
+      const textColor = activeEnd > block.start ? contrastTextColor(color) : 'rgba(255,255,255,0.3)';
+      ctx.fillStyle = textColor;
+      ctx.font = `500 11px ${fontMono}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(label, bx + bw / 2, chartY + chartH / 2);
     }
   }
 
-  // Context switch lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  ctx.lineWidth = 1.5;
+  // Context switch markers
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1;
   for (let i = 1; i < blocks.length; i++) {
     if (blocks[i].start === blocks[i - 1].end && blocks[i].tid !== blocks[i - 1].tid) {
       const x = chartX + blocks[i].start * pxPerTick;
@@ -189,11 +202,10 @@ export function renderGanttChart(ctx, trace, currentStep, canvasWidth, canvasHei
     }
   }
 
-  // Time axis markers
-  const step = pickTimeStep(span, chartW);
-  ctx.strokeStyle = '#6e7681';
-  ctx.fillStyle = '#8b949e';
-  ctx.font = '11px system-ui, sans-serif';
+  // Time axis labels
+  ctx.strokeStyle = cTertiary;
+  ctx.fillStyle = cTertiary;
+  ctx.font = `400 11px ${fontMono}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.lineWidth = 1;
@@ -201,31 +213,37 @@ export function renderGanttChart(ctx, trace, currentStep, canvasWidth, canvasHei
     const x = chartX + t * pxPerTick;
     ctx.beginPath();
     ctx.moveTo(x, chartY + chartH);
-    ctx.lineTo(x, chartY + chartH + 5);
+    ctx.lineTo(x, chartY + chartH + 4);
     ctx.stroke();
-    ctx.fillText(String(t), x, chartY + chartH + 8);
+    ctx.fillText(String(t), x, chartY + chartH + 6);
   }
   if (span % step !== 0) {
     const x = chartX + span * pxPerTick;
     ctx.beginPath();
     ctx.moveTo(x, chartY + chartH);
-    ctx.lineTo(x, chartY + chartH + 5);
+    ctx.lineTo(x, chartY + chartH + 4);
     ctx.stroke();
-    ctx.fillText(String(span), x, chartY + chartH + 8);
+    ctx.fillText(String(span), x, chartY + chartH + 6);
   }
 
-  // Current time indicator
-  const cx = chartX + Math.max(0, Math.min(span, currentStep)) * pxPerTick;
-  ctx.strokeStyle = '#f85149';
+  // Playhead — 2px accent line + triangle marker at top
+  const clampedStep = Math.max(0, Math.min(span, currentStep));
+  const cx = chartX + clampedStep * pxPerTick;
+
+  ctx.strokeStyle = cAccent;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(cx, chartY - 4);
-  ctx.lineTo(cx, chartY + chartH + 4);
+  ctx.moveTo(cx, chartY - 6);
+  ctx.lineTo(cx, chartY + chartH);
   ctx.stroke();
 
-  ctx.fillStyle = '#f85149';
-  ctx.font = 'bold 11px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText(`t=${currentStep}`, cx, chartY - 4);
+  // Triangle (downward pointing, sits above the chart)
+  const TW = 5;
+  ctx.fillStyle = cAccent;
+  ctx.beginPath();
+  ctx.moveTo(cx, chartY);
+  ctx.lineTo(cx - TW, chartY - 8);
+  ctx.lineTo(cx + TW, chartY - 8);
+  ctx.closePath();
+  ctx.fill();
 }

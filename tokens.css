@@ -1,0 +1,80 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   CoreView Design Tokens — single source of truth for all visual values.
+   Import this FIRST before any other stylesheet.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Surfaces ──────────────────────────────────────────────────────────── */
+  --bg-base:        #0A0A0B;
+  --bg-surface:     #141416;
+  --bg-elevated:    #1C1C1F;
+
+  /* ── Borders ───────────────────────────────────────────────────────────── */
+  --border-subtle:  #242428;
+  --border-default: #2E2E33;
+
+  /* ── Text ──────────────────────────────────────────────────────────────── */
+  --text-primary:   #F4F4F5;
+  --text-secondary: #A1A1AA;
+  --text-tertiary:  #71717A;
+
+  /* ── Accent ────────────────────────────────────────────────────────────── */
+  --accent:         #3B82F6;
+  --accent-hover:   #60A5FA;
+
+  /* ── Process/Thread States ─────────────────────────────────────────────── */
+  --state-running:  #10B981;
+  --state-ready:    #F59E0B;
+  --state-waiting:  #8B5CF6;
+  --state-blocked:  #EF4444;
+  --state-finished: #6B7280;
+  --state-new:      #06B6D4;
+
+  /* ── Semantic overlays (page replacement) ──────────────────────────────── */
+  --hit-bg:      #052e16;
+  --hit-text:    #10B981;
+  --hit-border:  #065f46;
+  --fault-bg:    #2d0a0a;
+  --fault-text:  #EF4444;
+  --fault-border:#991b1b;
+
+  /* ── Typography ────────────────────────────────────────────────────────── */
+  --font-ui:   'Inter', -apple-system, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ── Spacing (multiples of 4px) ────────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Border Radius ─────────────────────────────────────────────────────── */
+  --radius-sm: 2px;   /* chips, small elements */
+  --radius-md: 6px;   /* buttons, inputs, canvases */
+  --radius-lg: 8px;   /* cards, panels */
+  --radius-xl: 12px;  /* modals */
+
+  /* ── Shadows (minimal — only for elevation) ────────────────────────────── */
+  --shadow-modal:    0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-dropdown: 0 4px 12px rgba(0, 0, 0, 0.3);
+
+  /* ── Motion ────────────────────────────────────────────────────────────── */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast:    120ms;
+  --dur-normal:  200ms;
+  --dur-slow:    300ms;
+}
+
+/* Disable all transitions for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast:   0ms;
+    --dur-normal: 0ms;
+    --dur-slow:   0ms;
+  }
+}

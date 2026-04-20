@@ -1,10 +1,6 @@
-// memory-grid.js — DOM Grid renderer for memory frames. Hoverable cells. Sees total numPages only.
-// No shared/stack distinction at this layer.
+// memory-grid.js — DOM Grid renderer for memory frames. Hoverable cells.
 
-const PALETTE = [
-  '#5b9cf6', '#f07b5e', '#6abf85', '#f5c842',
-  '#a78bf5', '#ef5d52', '#4db8c8', '#e8879b',
-];
+import { pidToColor } from './color-utils.js';
 
 /**
  * @param {HTMLElement} container
@@ -15,13 +11,13 @@ export function renderMemoryGrid(container, memoryState, config) {
   const { frames, internalFragmentation } = memoryState;
   const { pageSize, numFrames, totalMemory } = config;
 
-  // Collect unique pids and build color map
+  // Deterministic per-PID color via pidToColor
   const pids = [...new Set(
     frames.filter(f => f.ownerPid !== null).map(f => f.ownerPid)
   )].sort((a, b) => a - b);
-  const colorMap = new Map(pids.map((pid, i) => [pid, PALETTE[i % PALETTE.length]]));
+  const colorMap = new Map(pids.map(pid => [pid, pidToColor(pid)]));
 
-  // Find the last frame index for each process (for fragmentation indicator)
+  // Last frame index per process (for fragmentation indicator)
   const lastFrameByPid = new Map();
   for (const f of frames) {
     if (f.ownerPid !== null) {

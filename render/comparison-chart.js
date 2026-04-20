@@ -1,5 +1,6 @@
-// comparison-chart.js — Canvas 2D grouped bar chart for algorithm comparison. Static (no animation).
-// Labels use 'Avg Thread TAT' convention per Risk 7.
+// comparison-chart.js — Canvas 2D grouped bar chart for algorithm comparison.
+
+import { token } from './color-utils.js';
 
 const ALGO_LABELS = {
   FCFS: 'FCFS', SJF: 'SJF', HRRN: 'HRRN', RR: 'RR(q=2)',
@@ -7,48 +8,70 @@ const ALGO_LABELS = {
 };
 
 const PAGE_ALGO_LABELS = {
-  FIFO: 'FIFO', LRU: 'LRU', OPTIMAL: 'OPT', CLOCK: 'CLOCK', SECOND_CHANCE: '2nd Chance',
+  FIFO: 'FIFO', LRU: 'LRU', OPTIMAL: 'OPT', CLOCK: 'CLOCK', SECOND_CHANCE: '2nd',
 };
 
-// TAT = blue, WT = coral, RT = green
-const METRIC_COLORS = ['#5b9cf6', '#f07b5e', '#6abf85'];
-const METRIC_NAMES  = ['Avg Thread TAT', 'Avg Thread WT', 'Avg Thread RT'];
-const METRIC_KEYS   = ['avgTurnaroundTime', 'avgWaitingTime', 'avgResponseTime'];
+// Metric colors: analogous hues shifted from accent (#3B82F6 = hsl(217, 91%, 60%))
+// TAT: accent, WT: accent+60°, RT: accent+120°
+function _metricColors() {
+  return [
+    token('--accent'),                // TAT: blue
+    'hsl(277, 65%, 55%)',             // WT: violet
+    'hsl(157, 65%, 55%)',             // RT: teal-green
+  ];
+}
 
-const PAGE_COLORS = ['#5b9cf6', '#f07b5e', '#6abf85', '#f5c842', '#a78bf5'];
+const METRIC_NAMES = ['Avg TAT', 'Avg WT', 'Avg RT'];
+const METRIC_KEYS  = ['avgTurnaroundTime', 'avgWaitingTime', 'avgResponseTime'];
+
+// Page algo bar colors: same hue-spread approach
+function _pageColors(n) {
+  return Array.from({ length: n }, (_, i) => `hsl(${(217 + i * 67) % 360}, 65%, 55%)`);
+}
 
 const MARGIN = { top: 36, right: 20, bottom: 76, left: 56 };
 
 function _clear(ctx) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.fillStyle = '#161b22';
+  ctx.fillStyle = token('--bg-surface');
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 }
 
 function _yAxis(ctx, maxVal, chartX, chartY, chartH, chartW) {
   const ticks = 5;
+  const cSubtle  = token('--border-subtle');
+  const cTertiary = token('--text-tertiary');
+  const fontMono  = `'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace`;
+
   ctx.save();
-  ctx.strokeStyle = '#21262d';
   ctx.lineWidth = 1;
-  ctx.fillStyle = '#8b949e';
-  ctx.font = '11px system-ui, sans-serif';
+  ctx.font = `400 11px ${fontMono}`;
   ctx.textAlign = 'right';
   for (let i = 0; i <= ticks; i++) {
     const v = (maxVal * i) / ticks;
     const y = chartY + chartH - (chartH * i) / ticks;
+
+    // Dotted gridline
+    ctx.strokeStyle = cSubtle;
+    ctx.setLineDash([3, 4]);
     ctx.beginPath();
     ctx.moveTo(chartX, y);
     ctx.lineTo(chartX + chartW, y);
     ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = cTertiary;
     ctx.fillText(v.toFixed(v < 1 ? 1 : 0), chartX - 6, y + 4);
   }
   ctx.restore();
 }
 
 function _xLabel(ctx, label, cx, bottomY, rotated) {
+  const cTertiary = token('--text-tertiary');
+  const fontMono  = `'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace`;
   ctx.save();
-  ctx.fillStyle = '#8b949e';
-  ctx.font = '11px system-ui, sans-serif';
+  ctx.fillStyle = cTertiary;
+  ctx.font = `400 11px ${fontMono}`;
   ctx.textAlign = 'center';
   if (rotated) {
     ctx.translate(cx, bottomY + 6);
@@ -61,15 +84,21 @@ function _xLabel(ctx, label, cx, bottomY, rotated) {
 }
 
 /**
- * Draws the scheduling grouped bar chart (3 bars per algorithm group).
  * @param {CanvasRenderingContext2D} ctx
- * @param {Array} comparisons  schedulingComparisons array
+ * @param {Array} comparisons
  */
 export function renderSchedulingComparisonChart(ctx, comparisons) {
   _clear(ctx);
+
+  const cTertiary = token('--text-tertiary');
+  const cBorder   = token('--border-default');
+  const cReady    = token('--state-ready');
+  const fontMono  = `'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace`;
+  const METRIC_COLORS = _metricColors();
+
   if (!comparisons || comparisons.length === 0) {
-    ctx.fillStyle = '#8b949e';
-    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillStyle = cTertiary;
+    ctx.font = `400 14px ${fontMono}`;
     ctx.textAlign = 'center';
     ctx.fillText('No data', ctx.canvas.width / 2, ctx.canvas.height / 2);
     return;
@@ -77,15 +106,11 @@ export function renderSchedulingComparisonChart(ctx, comparisons) {
 
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
-  const cX = MARGIN.left;
-  const cY = MARGIN.top;
+  const cX = MARGIN.left, cY = MARGIN.top;
   const cW = W - MARGIN.left - MARGIN.right;
   const cH = H - MARGIN.top - MARGIN.bottom;
 
-  // Find best (min) per metric
   const best = METRIC_KEYS.map(k => Math.min(...comparisons.map(c => c.metrics[k] ?? Infinity)));
-
-  // Compute max value across all metrics for consistent Y scale
   let maxVal = 0;
   for (const c of comparisons) {
     for (const k of METRIC_KEYS) {
@@ -93,7 +118,6 @@ export function renderSchedulingComparisonChart(ctx, comparisons) {
     }
   }
   if (maxVal === 0) maxVal = 1;
-  // Add 10% headroom
   maxVal *= 1.1;
 
   _yAxis(ctx, maxVal, cX, cY, cH, cW);
@@ -102,7 +126,7 @@ export function renderSchedulingComparisonChart(ctx, comparisons) {
   const groupW = cW / n;
   const nBars = 3;
   const barGap = groupW * 0.04;
-  const barW = (groupW * 0.8 - barGap * (nBars - 1)) / nBars;
+  const barW = (groupW * 0.78 - barGap * (nBars - 1)) / nBars;
 
   for (let gi = 0; gi < n; gi++) {
     const c = comparisons[gi];
@@ -120,23 +144,16 @@ export function renderSchedulingComparisonChart(ctx, comparisons) {
       ctx.fillRect(bx, by, barW, barH);
 
       if (isBest) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(bx - 1, by - 1, barW + 2, barH + 2);
-        ctx.restore();
-        // Star marker above bar
-        ctx.fillStyle = '#e3b341';
-        ctx.font = 'bold 11px system-ui, sans-serif';
+        ctx.fillStyle = cReady;
+        ctx.font = `600 11px ${fontMono}`;
         ctx.textAlign = 'center';
         ctx.fillText('★', bx + barW / 2, by - 3);
       }
 
-      // Value label inside bar (only if tall enough)
       if (barH > 18) {
         ctx.save();
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.font = '9px system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.font = `400 9px ${fontMono}`;
         ctx.textAlign = 'center';
         ctx.fillText(v.toFixed(1), bx + barW / 2, by + barH - 4);
         ctx.restore();
@@ -148,7 +165,7 @@ export function renderSchedulingComparisonChart(ctx, comparisons) {
 
   // Axis lines
   ctx.save();
-  ctx.strokeStyle = '#30363d';
+  ctx.strokeStyle = cBorder;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(cX, cY);
@@ -157,29 +174,32 @@ export function renderSchedulingComparisonChart(ctx, comparisons) {
   ctx.stroke();
   ctx.restore();
 
-  // Legend
-  _drawLegend(ctx, METRIC_NAMES, METRIC_COLORS, W, H);
+  _drawLegend(ctx, METRIC_NAMES, METRIC_COLORS, W, H, fontMono);
 }
 
 /**
- * Draws the page replacement bar chart (1 bar per algorithm).
  * @param {CanvasRenderingContext2D} ctx
- * @param {Array} comparisons  pageReplacementComparisons array
+ * @param {Array} comparisons
  */
 export function renderPageReplacementComparisonChart(ctx, comparisons) {
   _clear(ctx);
+
+  const cTertiary = token('--text-tertiary');
+  const cBorder   = token('--border-default');
+  const cReady    = token('--state-ready');
+  const fontMono  = `'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace`;
+
   if (!comparisons || comparisons.length === 0) {
-    ctx.fillStyle = '#8b949e';
-    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillStyle = cTertiary;
+    ctx.font = `400 14px ${fontMono}`;
     ctx.textAlign = 'center';
     ctx.fillText('No data', ctx.canvas.width / 2, ctx.canvas.height / 2);
     return;
   }
 
-  const W = ctx.canvas.width;
-  const H = ctx.canvas.height;
-  const cX = MARGIN.left;
-  const cY = MARGIN.top;
+  const PAGE_COLORS = _pageColors(comparisons.length);
+  const W = ctx.canvas.width, H = ctx.canvas.height;
+  const cX = MARGIN.left, cY = MARGIN.top;
   const cW = W - MARGIN.left - MARGIN.right;
   const cH = H - MARGIN.top - MARGIN.bottom;
 
@@ -195,8 +215,8 @@ export function renderPageReplacementComparisonChart(ctx, comparisons) {
 
   for (let i = 0; i < n; i++) {
     const c = comparisons[i];
-    const cx = cX + i * groupW + groupW / 2;
-    const bx = cx - barW / 2;
+    const barcx = cX + i * groupW + groupW / 2;
+    const bx = barcx - barW / 2;
     const barH = (c.totalFaults / maxFaults) * cH;
     const by = cY + cH - barH;
     const isBest = c.totalFaults === minFaults;
@@ -205,36 +225,32 @@ export function renderPageReplacementComparisonChart(ctx, comparisons) {
     ctx.fillRect(bx, by, barW, barH);
 
     if (isBest) {
-      ctx.save();
-      ctx.strokeStyle = '#222';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(bx - 1, by - 1, barW + 2, barH + 2);
-      ctx.restore();
-      ctx.fillStyle = '#222';
-      ctx.font = 'bold 11px system-ui, sans-serif';
+      ctx.fillStyle = cReady;
+      ctx.font = `600 11px ${fontMono}`;
       ctx.textAlign = 'center';
-      ctx.fillText('★', cx, by - 3);
+      ctx.fillText('★', barcx, by - 3);
     }
 
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 12px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    if (barH > 18) ctx.fillText(c.totalFaults, cx, by + barH - 5);
+    if (barH > 18) {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.font = `500 12px ${fontMono}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(c.totalFaults, barcx, by + barH - 5);
+    }
 
-    _xLabel(ctx, PAGE_ALGO_LABELS[c.algorithm] || c.algorithm, cx, cY + cH, false);
+    _xLabel(ctx, PAGE_ALGO_LABELS[c.algorithm] || c.algorithm, barcx, cY + cH, false);
 
-    // Hit rate below label
     ctx.save();
-    ctx.fillStyle = '#888';
-    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = cTertiary;
+    ctx.font = `400 10px ${fontMono}`;
     ctx.textAlign = 'center';
-    ctx.fillText(`${(c.hitRate * 100).toFixed(0)}% hit`, cx, cY + cH + 28);
+    ctx.fillText(`${(c.hitRate * 100).toFixed(0)}% hit`, barcx, cY + cH + 30);
     ctx.restore();
   }
 
-  // Axis
+  // Axis lines
   ctx.save();
-  ctx.strokeStyle = '#bbb';
+  ctx.strokeStyle = cBorder;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(cX, cY);
@@ -245,8 +261,8 @@ export function renderPageReplacementComparisonChart(ctx, comparisons) {
 
   // Y axis label
   ctx.save();
-  ctx.fillStyle = '#8b949e';
-  ctx.font = '11px system-ui, sans-serif';
+  ctx.fillStyle = cTertiary;
+  ctx.font = `400 11px ${fontMono}`;
   ctx.textAlign = 'center';
   ctx.translate(14, cY + cH / 2);
   ctx.rotate(-Math.PI / 2);
@@ -254,20 +270,21 @@ export function renderPageReplacementComparisonChart(ctx, comparisons) {
   ctx.restore();
 }
 
-function _drawLegend(ctx, names, colors, W, H) {
+function _drawLegend(ctx, names, colors, W, H, fontMono) {
   const legendY = H - 18;
-  const itemW = 110;
-  const totalW = names.length * itemW;
+  const itemW   = 100;
+  const totalW  = names.length * itemW;
   let lx = (W - totalW) / 2;
+  const cTertiary = token('--text-tertiary');
 
   ctx.save();
-  ctx.font = '11px system-ui, sans-serif';
+  ctx.font = `400 11px ${fontMono}`;
   for (let i = 0; i < names.length; i++) {
     ctx.fillStyle = colors[i];
-    ctx.fillRect(lx, legendY - 8, 12, 10);
-    ctx.fillStyle = '#8b949e';
+    ctx.fillRect(lx, legendY - 8, 10, 10);
+    ctx.fillStyle = cTertiary;
     ctx.textAlign = 'left';
-    ctx.fillText(names[i], lx + 16, legendY);
+    ctx.fillText(names[i], lx + 14, legendY);
     lx += itemW;
   }
   ctx.restore();
@@ -277,9 +294,8 @@ function _drawLegend(ctx, names, colors, W, H) {
  * @param {CanvasRenderingContext2D} ctx
  * @param {import('../types.js').ComparisonResult} comparison
  * @param {string} metric  'scheduling' | 'paging'
- * @param {'bar'|'grouped'} chartType
  */
-export function renderComparisonChart(ctx, comparison, metric, chartType) {
+export function renderComparisonChart(ctx, comparison, metric) {
   if (metric === 'paging') {
     renderPageReplacementComparisonChart(ctx, comparison.pageReplacementComparisons);
   } else {
