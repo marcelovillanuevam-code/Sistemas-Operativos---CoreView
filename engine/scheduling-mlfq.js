@@ -3,6 +3,7 @@
 // Aging: 15+ ticks waiting in lowest queue → promote to Q0. Calls expandToThreads() first.
 
 import { expandToThreads } from './thread-utils.js';
+import { computeMetrics }  from './engine-utils.js';
 
 function buildProcessStates(processes, pidToTids, completed, running, allReadyTids) {
   return processes.map(p => {
@@ -193,38 +194,9 @@ export function runMLFQ(processes, config) {
     time++;
   }
 
-  // Thread Metrics
-  const threadMetrics = entities.map(e => {
-    const ct  = completionTime.get(e.tid);
-    const tat = ct - e.arrivalTime;
-    const wt  = tat - e.burstTime;
-    const rt  = firstRunTime.get(e.tid) - e.arrivalTime;
-    return { tid: e.tid, pid: e.pid, completionTime: ct, turnaroundTime: tat, waitingTime: wt, responseTime: rt };
-  });
-
-  // Process Metrics (join-barrier)
-  const processMetrics = processes.map(p => {
-    const tids      = pidToTids.get(p.pid) || [];
-    const threadCTs = tids.map(tid => completionTime.get(tid));
-    const threadFRTs= tids.map(tid => firstRunTime.get(tid));
-    const burstSum  = tids.reduce((s, tid) => s + work.get(tid).burstTime, 0);
-    const ct  = Math.max(...threadCTs);
-    const tat = ct - p.arrivalTime;
-    const wt  = tat - burstSum;
-    const rt  = Math.min(...threadFRTs) - p.arrivalTime;
-    return { pid: p.pid, completionTime: ct, turnaroundTime: tat, waitingTime: wt, responseTime: rt };
-  });
-
-  const n      = threadMetrics.length;
-  const avgCT  = threadMetrics.reduce((s, m) => s + m.completionTime,  0) / n;
-  const avgTAT = threadMetrics.reduce((s, m) => s + m.turnaroundTime,  0) / n;
-  const avgWT  = threadMetrics.reduce((s, m) => s + m.waitingTime,     0) / n;
-  const avgRT  = threadMetrics.reduce((s, m) => s + m.responseTime,    0) / n;
-
-  const totalTime  = Math.max(...completionTime.values());
-  const busyTicks  = entities.reduce((s, e) => s + e.burstTime, 0);
-  const cpuUtil    = totalTime > 0 ? (busyTicks / totalTime) * 100 : 0;
-  const throughput = totalTime > 0 ? n / totalTime : 0;
+  const { threadMetrics, processMetrics, aggregateMetrics } = computeMetrics(
+    entities, processes, completionTime, firstRunTime, work, pidToTids, contextSwitches
+  );
 
   return {
     algorithm: 'MLFQ',
@@ -232,14 +204,6 @@ export function runMLFQ(processes, config) {
     timeline,
     threadMetrics,
     processMetrics,
-    aggregateMetrics: {
-      avgCompletionTime:    avgCT,
-      avgTurnaroundTime:    avgTAT,
-      avgWaitingTime:       avgWT,
-      avgResponseTime:      avgRT,
-      cpuUtilization:       cpuUtil,
-      totalContextSwitches: contextSwitches,
-      throughput,
-    },
+    aggregateMetrics,
   };
 }

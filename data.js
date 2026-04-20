@@ -65,7 +65,13 @@ export function parseProcessesFromFile(fileContent) {
   const lines = fileContent
     .trim()
     .split(/\r?\n/)
-    .filter(l => { const t = l.trim(); return t.length > 0 && !t.startsWith('#'); });
+    .filter(l => {
+      const t = l.trim();
+      if (!t || t.startsWith('#')) return false;
+      // Skip header rows where first token is not a valid integer (e.g. "PID,Arrival,...")
+      const first = t.split(',')[0].trim();
+      return !isNaN(parseInt(first, 10));
+    });
 
   if (lines.length === 0) throw new Error('File is empty');
 

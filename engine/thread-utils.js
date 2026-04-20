@@ -78,7 +78,9 @@ export function generateThreadTrace(processes, targetPid, config) {
   let running = null;
   const timeline = [];
   let time = 0;
-  const maxTime = entities.reduce((s, e) => s + e.burstTime, 0) + 1;
+  const totalBurst = entities.reduce((s, e) => s + e.burstTime, 0);
+  const maxArrival = Math.max(0, ...entities.map(e => e.arrivalTime));
+  const maxTime    = maxArrival + totalBurst + 1;
 
   while (time <= maxTime) {
     const completedThisTick = [];

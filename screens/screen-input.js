@@ -6,6 +6,7 @@ import {
   parseProcessesFromFile,
   parseMemoryConfig,
   validateProcesses,
+  generateReferenceString,
 } from '../data.js';
 import { AppState } from '../app.js';
 
@@ -430,8 +431,9 @@ function _handleRunSimulation() {
   mfd.set('totalMemory', totalMemory);
   mfd.set('pageSize', pageSize);
 
-  AppState.processes    = processes;
-  AppState.memoryConfig = parseMemoryConfig(mfd);
+  AppState.processes       = processes;
+  AppState.memoryConfig    = parseMemoryConfig(mfd);
+  AppState.referenceString = generateReferenceString(processes, 20);
 
   document.querySelector('[data-tab="scheduling"]').click();
 }

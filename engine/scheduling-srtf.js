@@ -3,6 +3,7 @@
 // Ties on dispatch (running=null) broken by arrivalTime, then pid, then tid.
 
 import { expandToThreads } from './thread-utils.js';
+import { computeMetrics }  from './engine-utils.js';
 
 function buildProcessStates(processes, pidToTids, completed, runningTid, readyPool) {
   return processes.map(p => {
@@ -70,7 +71,10 @@ export function runSRTF(processes) {
   const timeline = [];
   let time = 0;
 
-  const maxTime = entities.reduce((s, e) => s + e.burstTime, 0) + 1;
+  // Upper bound: last arrival + total burst + 1 — covers idle gaps between arrivals
+  const totalBurst = entities.reduce((s, e) => s + e.burstTime, 0);
+  const maxArrival = Math.max(0, ...entities.map(e => e.arrivalTime));
+  const maxTime    = maxArrival + totalBurst + 1;
 
   while (time <= maxTime) {
     // Step 1: completions from previous tick
@@ -140,39 +144,9 @@ export function runSRTF(processes) {
     time++;
   }
 
-  // Thread Metrics
-  const threadMetrics = entities.map(e => {
-    const ct  = completionTime.get(e.tid);
-    const tat = ct - e.arrivalTime;
-    const wt  = tat - e.burstTime;
-    const rt  = firstRunTime.get(e.tid) - e.arrivalTime;
-    return { tid: e.tid, pid: e.pid, completionTime: ct, turnaroundTime: tat, waitingTime: wt, responseTime: rt };
-  });
-
-  // Process Metrics (join-barrier)
-  const processMetrics = processes.map(p => {
-    const tids       = pidToTids.get(p.pid) || [];
-    const threadCTs  = tids.map(tid => completionTime.get(tid));
-    const threadFRTs = tids.map(tid => firstRunTime.get(tid));
-    const burstSum   = tids.reduce((s, tid) => s + work.get(tid).burstTime, 0);
-
-    const ct  = Math.max(...threadCTs);
-    const tat = ct - p.arrivalTime;
-    const wt  = tat - burstSum;
-    const rt  = Math.min(...threadFRTs) - p.arrivalTime;
-    return { pid: p.pid, completionTime: ct, turnaroundTime: tat, waitingTime: wt, responseTime: rt };
-  });
-
-  const n      = threadMetrics.length;
-  const avgCT  = threadMetrics.reduce((s, m) => s + m.completionTime,  0) / n;
-  const avgTAT = threadMetrics.reduce((s, m) => s + m.turnaroundTime,  0) / n;
-  const avgWT  = threadMetrics.reduce((s, m) => s + m.waitingTime,     0) / n;
-  const avgRT  = threadMetrics.reduce((s, m) => s + m.responseTime,    0) / n;
-
-  const totalTime  = Math.max(...completionTime.values());
-  const busyTicks  = entities.reduce((s, e) => s + e.burstTime, 0);
-  const cpuUtil    = totalTime > 0 ? (busyTicks / totalTime) * 100 : 0;
-  const throughput = totalTime > 0 ? n / totalTime : 0;
+  const { threadMetrics, processMetrics, aggregateMetrics } = computeMetrics(
+    entities, processes, completionTime, firstRunTime, work, pidToTids, contextSwitches
+  );
 
   return {
     algorithm: 'SRTF',
@@ -180,14 +154,6 @@ export function runSRTF(processes) {
     timeline,
     threadMetrics,
     processMetrics,
-    aggregateMetrics: {
-      avgCompletionTime:    avgCT,
-      avgTurnaroundTime:    avgTAT,
-      avgWaitingTime:       avgWT,
-      avgResponseTime:      avgRT,
-      cpuUtilization:       cpuUtil,
-      totalContextSwitches: contextSwitches,
-      throughput,
-    },
+    aggregateMetrics,
   };
 }
