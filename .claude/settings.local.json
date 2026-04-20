@@ -11,7 +11,9 @@
       "Bash(py --version)",
       "Bash(python -m http.server 8765)",
       "Bash(curl *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(python -m http.server 8765 --bind 127.0.0.1)",
+      "Bash(git add *)"
     ]
   }
 }

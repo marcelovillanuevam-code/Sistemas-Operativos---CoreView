@@ -51,6 +51,32 @@ function _runEngine() {
 
 // ─── Reference-string helpers ─────────────────────────────────────────────────
 
+/**
+ * Generates a random reference string with ~70% locality (stay in current process/region).
+ * @param {{ pid: number, numPages: number }[]} procs
+ * @param {number} length
+ * @returns {{ pid: number, pageNumber: number }[]}
+ */
+function _generateRandomRefs(procs, length) {
+  if (!procs.length || length <= 0) return [];
+  const refs = [];
+  let pidIdx = Math.floor(Math.random() * procs.length);
+  let lastPage = 0;
+  for (let i = 0; i < length; i++) {
+    // 30% chance to switch process
+    if (Math.random() < 0.3) pidIdx = Math.floor(Math.random() * procs.length);
+    const proc = procs[pidIdx];
+    const pages = proc.numPages || 1;
+    // 70% locality: pick a nearby page; 30% random jump
+    const page = Math.random() < 0.7
+      ? (lastPage + Math.floor(Math.random() * 3)) % pages
+      : Math.floor(Math.random() * pages);
+    refs.push({ pid: proc.pid, pageNumber: page });
+    lastPage = page;
+  }
+  return refs;
+}
+
 function _parseCustomString(raw) {
   const tokens = raw.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return null;
@@ -246,7 +272,7 @@ export function initPagingScreen() {
     const procs  = (AppState.processes && AppState.processes.length > 0)
       ? AppState.processes
       : A1_PROCESSES;
-    _refs = generateReferenceString(procs, length);
+    _refs = _generateRandomRefs(procs, length);
     _numFrames = parseInt(framesInput.value, 10) || 3;
     _run();
   }
