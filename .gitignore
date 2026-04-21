@@ -1,0 +1,12 @@
+# Documentation (keep README.md)
+ARCHITECTURE.md
+CLAUDE.md
+claude_code_prompts.md
+*.md
+!README.md
+
+# Claude configuration
+.claude/
+
+# Test scratch files
+_testfiles/
