@@ -74,7 +74,7 @@ CoreView/
   screens/                Pantallas de la interfaz
   tests/                  Pruebas unitarias
   assets/                 Recursos estaticos
-  ARCHITECTURE.md         Documentacion de arquitectura
+
 ```
 
 ## Arquitectura
