@@ -85,7 +85,6 @@ El proyecto sigue una separacion en tres capas:
 2. Capa de motor (`engine/`): funciones puras que ejecutan los algoritmos. No tocan el DOM y se pueden probar en Node.
 3. Capa de renderizado (`render/`): consume las trazas generadas por el motor y las dibuja en pantalla.
 
-Para mas detalle sobre estructuras de datos, contratos y casos de prueba, revisar `ARCHITECTURE.md`.
 
 ## Despliegue
 
