@@ -11,8 +11,7 @@ import { runSecondChance }        from '../engine/paging-second-chance.js';
 import { makeAnimationController } from '../render/animation.js';
 import { renderPageReplacementTable } from '../render/page-table.js';
 import { renderClockDiagram }     from '../render/clock-visual.js';
-
-// ─── Defaults ─────────────────────────────────────────────────────────────────
+import { toast, navigateTo }      from '../render/ui-feedback.js';
 
 // Appendix B reference string: [1,2,3,4,1,2,5,1,2,3,4,5], all pid=1
 const DEFAULT_REFS = [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5].map(n => ({ pid: 1, pageNumber: n }));
@@ -28,15 +27,19 @@ const A1_PROCESSES = [
 
 const CLOCK_ALGOS = new Set(['CLOCK', 'SECOND_CHANCE']);
 
-// ─── Module state ──────────────────────────────────────────────────────────────
+const ALGO_DESCRIPTIONS = {
+  FIFO:          'FIFO — Reemplaza la página que ha estado más tiempo en memoria.',
+  LRU:           'LRU — Reemplaza la página menos recientemente usada (Least Recently Used).',
+  OPTIMAL:       'Optimal — Reemplaza la página que tardará más en volver a usarse. Referencia teórica.',
+  CLOCK:         'Clock — Algoritmo del reloj con bit de referencia, recorrido circular.',
+  SECOND_CHANCE: 'Second Chance — FIFO con bit de referencia: si está marcado, da una segunda oportunidad.',
+};
 
 let _algo      = 'FIFO';
 let _numFrames = 3;
 let _refs      = [...DEFAULT_REFS];
 let _trace     = null;
 let _ctrl      = null;
-
-// ─── Engine dispatch ──────────────────────────────────────────────────────────
 
 function _runEngine() {
   switch (_algo) {
@@ -80,33 +83,38 @@ function _generateRandomRefs(procs, length) {
 function _parseCustomString(raw) {
   const tokens = raw.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return null;
+  if (tokens.length > 200) return null;
   const refs = [];
   for (const tok of tokens) {
     if (tok.includes(':')) {
       const [pidStr, pgStr] = tok.split(':');
       const pid = parseInt(pidStr, 10);
       const pg  = parseInt(pgStr, 10);
-      if (isNaN(pid) || isNaN(pg)) return null;
+      if (isNaN(pid) || isNaN(pg) || pid < 1 || pg < 0) return null;
       refs.push({ pid, pageNumber: pg });
     } else {
       const pg = parseInt(tok, 10);
-      if (isNaN(pg)) return null;
+      if (isNaN(pg) || pg < 0) return null;
       refs.push({ pid: 1, pageNumber: pg });
     }
   }
   return refs;
 }
 
-// ─── Main init ────────────────────────────────────────────────────────────────
-
 export function initPagingScreen() {
   const root = document.querySelector('[data-screen="paging"]');
   if (!root) return;
 
   root.innerHTML = `
-    <h2>Page Replacement</h2>
+    <h2>Reemplazo de páginas</h2>
+    <p class="screen-desc">
+      Selecciona un algoritmo y una <b>cadena de referencias</b> de páginas.
+      El simulador muestra paso a paso qué páginas están en cada marco, los
+      hits y los page faults.
+    </p>
 
-    <!-- Algorithm selector -->
+    <div id="pg-data-banner"></div>
+
     <div class="pg-algo-bar">
       <button class="pg-algo-btn active" data-algo="FIFO">FIFO</button>
       <button class="pg-algo-btn" data-algo="LRU">LRU</button>
@@ -115,42 +123,49 @@ export function initPagingScreen() {
       <button class="pg-algo-btn" data-algo="SECOND_CHANCE">Second Chance</button>
     </div>
 
-    <!-- Configuration -->
+    <div id="pg-algo-desc" class="sched-config-panel"></div>
+
     <div class="pg-config">
       <div class="pg-config-row">
         <label class="pg-config-label">
-          Frames:
+          Marcos:
           <input id="pg-frames" type="number" class="inp-num" min="1" max="32" value="3" style="width:60px">
+          <span class="help-hint" tabindex="0" data-tooltip="Número de marcos físicos disponibles para esta simulación de paginación. Independiente de la configuración de Memoria. Rango: 1–32.">?</span>
         </label>
         <span class="pg-config-sep">|</span>
+        <span class="pg-config-label">Origen de la cadena:</span>
         <div class="pg-src-toggle">
           <button class="pg-src-btn active" id="pg-src-auto">Auto</button>
-          <button class="pg-src-btn" id="pg-src-custom">Custom</button>
+          <button class="pg-src-btn" id="pg-src-custom">Personalizada</button>
         </div>
       </div>
       <div id="pg-auto-panel" class="pg-config-row">
         <label class="pg-config-label">
-          Length:
-          <input id="pg-reflen" type="number" class="inp-num" min="1" max="200" value="20" style="width:60px">
+          Longitud:
+          <input id="pg-reflen" type="number" class="inp-num" min="1" max="100" value="20" style="width:60px">
         </label>
-        <button class="inp-btn" id="pg-btn-generate">Generate</button>
+        <button class="inp-btn" id="pg-btn-generate">Generar</button>
+        <span class="field-help">Genera una cadena alternando páginas de los procesos cargados.</span>
       </div>
       <div id="pg-custom-panel" class="pg-config-row" hidden>
-        <label class="pg-config-label">Reference string:</label>
+        <label class="pg-config-label">Cadena de referencias:</label>
         <input id="pg-custom-str" class="pg-custom-input"
-          placeholder="e.g. 1 2 3 4 1 2 5 1 2 3 4 5   or   1:0 2:0 1:1">
-        <button class="inp-btn" id="pg-btn-apply">Apply</button>
+          placeholder="ej: 1 2 3 4 1 2 5 1 2 3 4 5   o   1:0 2:0 1:1">
+        <button class="inp-btn" id="pg-btn-apply">Aplicar</button>
         <span id="pg-custom-err" class="pg-custom-err" hidden></span>
+        <div class="field-help">
+          Números separados por espacio. Usa <code>pid:página</code> para multiproceso.
+          Máx. 200 referencias.
+        </div>
       </div>
     </div>
 
-    <!-- Animation controls -->
     <div class="sched-controls">
-      <button data-action="play">▶ Play</button>
-      <button data-action="pause">⏸ Pause</button>
-      <button data-action="step-back">⏮ Step Back</button>
-      <button data-action="step-forward">⏭ Step Forward</button>
-      <label>Speed:
+      <button data-action="play"         title="Reproducir">▶ Play</button>
+      <button data-action="pause"        title="Pausar">⏸ Pausa</button>
+      <button data-action="step-back"    title="Paso atrás">⏮ Atrás</button>
+      <button data-action="step-forward" title="Paso adelante">⏭ Siguiente</button>
+      <label>Velocidad:
         <select data-action="speed">
           <option value="1">1×</option>
           <option value="2">2×</option>
@@ -158,36 +173,37 @@ export function initPagingScreen() {
         </select>
       </label>
       <span class="sched-step">
-        Step <span id="pg-step-cur">0</span> / <span id="pg-step-tot">0</span>
+        Paso <span id="pg-step-cur">0</span> / <span id="pg-step-tot">0</span>
       </span>
     </div>
 
-    <!-- Reference string display -->
     <div class="sched-section">
-      <div class="sched-section-title">Reference String</div>
+      <div class="sched-section-title">
+        Cadena de referencias
+        <span class="help-hint" tabindex="0" data-tooltip="Secuencia de páginas solicitadas en orden temporal. Cada chip representa una referencia. La actual se resalta en amarillo.">?</span>
+      </div>
       <div id="pg-refstring" class="pg-refstring"></div>
     </div>
 
-    <!-- Hit/Fault indicator -->
     <div id="pg-indicator" class="pg-indicator"></div>
 
-    <!-- Summary stats (whole trace) -->
     <div id="pg-stats" class="pg-stats"></div>
 
-    <!-- Main body: table + clock canvas -->
     <div class="pg-body">
       <div class="pg-table-col">
-        <div class="sched-section-title">Frame States</div>
+        <div class="sched-section-title">
+          Estado de los marcos
+          <span class="help-hint" tabindex="0" data-tooltip="Tabla con el contenido de cada marco después de cada referencia. Verde = hit (ya estaba). Rojo = page fault (hubo que cargarla).">?</span>
+        </div>
         <div id="pg-table-container"></div>
       </div>
       <div class="pg-clock-col" id="pg-clock-col" hidden>
-        <div class="sched-section-title">Clock Buffer</div>
+        <div class="sched-section-title">Buffer del Clock</div>
         <canvas id="pg-clock-canvas" width="360" height="360"></canvas>
       </div>
     </div>
   `;
 
-  // ── DOM refs ────────────────────────────────────────────────────────────────
   const framesInput    = root.querySelector('#pg-frames');
   const reflenInput    = root.querySelector('#pg-reflen');
   const customInput    = root.querySelector('#pg-custom-str');
@@ -205,10 +221,33 @@ export function initPagingScreen() {
   const clockCtx       = clockCanvas.getContext('2d');
   const stepCur        = root.querySelector('#pg-step-cur');
   const stepTot        = root.querySelector('#pg-step-tot');
+  const algoDescEl     = root.querySelector('#pg-algo-desc');
+  const dataBannerEl   = root.querySelector('#pg-data-banner');
 
   let _useAuto = true;
 
-  // ── Reference string source toggle ─────────────────────────────────────────
+  function _renderDataBanner() {
+    const usingUserData = AppState.processes && AppState.processes.length > 0;
+    if (usingUserData) {
+      dataBannerEl.innerHTML =
+        `<div class="banner-info">` +
+        `  <span class="banner-icon">●</span>` +
+        `  Generando cadenas a partir de tus <b>${AppState.processes.length}</b> proceso(s).` +
+        `</div>`;
+    } else {
+      dataBannerEl.innerHTML =
+        `<div class="banner-info banner-warn">` +
+        `  <span class="banner-icon">⚠</span>` +
+        `  Usando una cadena de referencias de <b>ejemplo</b>. ` +
+        `  <a href="#" id="pg-goto-input">Ir a Entrada para usar tus procesos →</a>` +
+        `</div>`;
+      dataBannerEl.querySelector('#pg-goto-input')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        navigateTo('input');
+      });
+    }
+  }
+
   srcAutoBtn.addEventListener('click', () => {
     _useAuto = true;
     srcAutoBtn.classList.add('active');
@@ -224,14 +263,23 @@ export function initPagingScreen() {
     srcAutoBtn.classList.remove('active');
     customPanel.hidden = false;
     autoPanel.hidden = true;
-    // Pre-fill custom input with current ref string
     customInput.value = _refs.map(r => r.pageNumber).join(' ');
   });
 
-  // ── Config changes ──────────────────────────────────────────────────────────
   framesInput.addEventListener('change', () => {
-    const v = parseInt(framesInput.value, 10);
-    if (v >= 1 && v <= 32) { _numFrames = v; _run(); }
+    let v = parseInt(framesInput.value, 10);
+    if (isNaN(v) || v < 1) v = 1;
+    if (v > 32) v = 32;
+    framesInput.value = v;
+    _numFrames = v;
+    _run();
+  });
+
+  reflenInput.addEventListener('change', () => {
+    let v = parseInt(reflenInput.value, 10);
+    if (isNaN(v) || v < 1) v = 1;
+    if (v > 100) v = 100;
+    reflenInput.value = v;
   });
 
   root.querySelector('#pg-btn-generate').addEventListener('click', _generateAndRun);
@@ -241,17 +289,16 @@ export function initPagingScreen() {
     if (e.key === 'Enter') _applyCustom();
   });
 
-  // ── Algorithm buttons ───────────────────────────────────────────────────────
   root.querySelectorAll('.pg-algo-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       root.querySelectorAll('.pg-algo-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       _algo = btn.dataset.algo;
+      algoDescEl.textContent = ALGO_DESCRIPTIONS[_algo] || '';
       _run();
     });
   });
 
-  // ── Animation controls ──────────────────────────────────────────────────────
   root.querySelector('[data-action="play"]').addEventListener('click', () => _ctrl?.play());
   root.querySelector('[data-action="pause"]').addEventListener('click', () => _ctrl?.pause());
   root.querySelector('[data-action="step-back"]').addEventListener('click', () => _ctrl?.stepBackward());
@@ -260,13 +307,12 @@ export function initPagingScreen() {
     _ctrl?.setSpeed(Number(e.target.value));
   });
 
-  // ── Re-run when tab is activated ────────────────────────────────────────────
   document.querySelector('[data-tab="paging"]')?.addEventListener('click', () => {
+    _renderDataBanner();
     if (_useAuto) _generateAndRun();
     else _run();
   });
 
-  // ─── Generate reference string (auto mode) ─────────────────────────────────
   function _generateAndRun() {
     const length = parseInt(reflenInput.value, 10) || 20;
     const procs  = (AppState.processes && AppState.processes.length > 0)
@@ -277,21 +323,21 @@ export function initPagingScreen() {
     _run();
   }
 
-  // ─── Apply custom reference string ─────────────────────────────────────────
   function _applyCustom() {
     const parsed = _parseCustomString(customInput.value);
     if (!parsed || parsed.length === 0) {
-      customErr.textContent = 'Invalid format. Use space-separated numbers, e.g. "1 2 3 4 1 2 5".';
+      customErr.textContent = 'Formato inválido. Usa números separados por espacio (máx. 200).';
       customErr.hidden = false;
+      toast('Cadena de referencias inválida.', 'err');
       return;
     }
     customErr.hidden = true;
     _refs = parsed;
     _numFrames = parseInt(framesInput.value, 10) || 3;
     _run();
+    toast(`Aplicada cadena de ${parsed.length} referencias.`, 'ok', 1800);
   }
 
-  // ─── Run simulation and wire animation ─────────────────────────────────────
   function _run() {
     if (_ctrl) _ctrl.pause();
 
@@ -303,27 +349,21 @@ export function initPagingScreen() {
     stepTot.textContent = String(total);
     stepCur.textContent = '1';
 
-    // Show/hide clock visual
     const needsClock = CLOCK_ALGOS.has(_algo);
     clockCol.hidden = !needsClock;
 
-    // Build reference string chips (once per run)
     _buildRefStringChips();
-
-    // Summary stats (static, whole trace)
     _renderStats();
 
-    // Create animation controller
     _ctrl = makeAnimationController(total);
     _ctrl.onStepChange(_renderStep);
 
-    // Reset speed selector
     root.querySelector('[data-action="speed"]').value = '1';
 
     _renderStep(0);
+    algoDescEl.textContent = ALGO_DESCRIPTIONS[_algo] || '';
   }
 
-  // ─── Build reference string chip row ───────────────────────────────────────
   function _buildRefStringChips() {
     refstringEl.innerHTML = '';
     const allSamePid = _refs.every(r => r.pid === _refs[0].pid);
@@ -340,14 +380,12 @@ export function initPagingScreen() {
     }
   }
 
-  // ─── Per-step render ────────────────────────────────────────────────────────
   function _renderStep(stepIdx) {
     const s = stepIdx !== undefined ? stepIdx : _ctrl.getCurrentStep();
     stepCur.textContent = String(s + 1);
 
     const step = _trace.steps[s];
 
-    // Update reference string highlight + scroll current into view
     for (const chip of refstringEl.children) {
       const idx = parseInt(chip.dataset.step);
       chip.classList.toggle('pg-ref-step--current', idx === s);
@@ -356,42 +394,36 @@ export function initPagingScreen() {
     const curChip = refstringEl.querySelector('.pg-ref-step--current');
     if (curChip) curChip.scrollIntoView({ inline: 'nearest', block: 'nearest' });
 
-    // Hit/Fault indicator
     _renderIndicator(step);
-
-    // Page table
     renderPageReplacementTable(tableContainer, _trace, s);
 
-    // Clock diagram
     if (CLOCK_ALGOS.has(_algo)) {
       renderClockDiagram(clockCtx, step, _numFrames);
     }
   }
 
-  // ─── Hit/Fault indicator ────────────────────────────────────────────────────
   function _renderIndicator(step) {
     const hits = step.stepIndex + 1 - step.faultsSoFar;
     indicatorEl.innerHTML =
       (step.isHit
         ? `<span class="pg-badge pg-badge--hit pg-badge--lg">HIT</span>`
         : `<span class="pg-badge pg-badge--fault pg-badge--lg">PAGE FAULT</span>`) +
-      `<span class="pg-indicator-stat">Faults: <b>${step.faultsSoFar}</b></span>` +
-      `<span class="pg-indicator-stat">Hits: <b>${hits}</b></span>` +
-      `<span class="pg-indicator-stat">Step: <b>${step.stepIndex + 1}</b> / <b>${_trace.steps.length}</b></span>`;
+      `<span class="pg-indicator-stat">Fallos: <b>${step.faultsSoFar}</b></span>` +
+      `<span class="pg-indicator-stat">Aciertos: <b>${hits}</b></span>` +
+      `<span class="pg-indicator-stat">Paso: <b>${step.stepIndex + 1}</b> / <b>${_trace.steps.length}</b></span>`;
   }
 
-  // ─── Whole-trace summary stats ──────────────────────────────────────────────
   function _renderStats() {
     statsEl.innerHTML =
-      `<span>Algorithm: <b>${_algo}</b></span>` +
-      `<span>Frames: <b>${_numFrames}</b></span>` +
-      `<span>Total Refs: <b>${_trace.referenceString.length}</b></span>` +
-      `<span>Total Faults: <b>${_trace.totalFaults}</b></span>` +
-      `<span>Total Hits: <b>${_trace.totalHits}</b></span>` +
-      `<span>Hit Rate: <b>${(_trace.hitRate * 100).toFixed(1)}%</b></span>`;
+      `<span>Algoritmo: <b>${_algo}</b></span>` +
+      `<span>Marcos: <b>${_numFrames}</b></span>` +
+      `<span>Referencias: <b>${_trace.referenceString.length}</b></span>` +
+      `<span>Total Fallos: <b>${_trace.totalFaults}</b></span>` +
+      `<span>Total Aciertos: <b>${_trace.totalHits}</b></span>` +
+      `<span>Tasa de aciertos: <b>${(_trace.hitRate * 100).toFixed(1)}%</b></span>`;
   }
 
-  // ── Initial render ──────────────────────────────────────────────────────────
+  _renderDataBanner();
   _refs      = [...DEFAULT_REFS];
   _numFrames = 3;
   _run();

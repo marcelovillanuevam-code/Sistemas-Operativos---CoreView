@@ -4,20 +4,24 @@
 import { AppState }            from '../app.js';
 import { compareScheduling, comparePageReplacement, DEFAULT_SCHEDULING_CONFIGS, ALL_PAGE_ALGORITHMS } from '../engine/comparison.js';
 import { renderSchedulingComparisonChart, renderPageReplacementComparisonChart } from '../render/comparison-chart.js';
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
+import { toast, navigateTo }   from '../render/ui-feedback.js';
 
 export function initComparisonScreen() {
   document.querySelector('[data-tab="comparison"]')?.addEventListener('click', _onTabActivated);
-}
 
-// ─── State ────────────────────────────────────────────────────────────────────
+  // Wire the no-data link to navigate to input
+  const noData = document.getElementById('cmp-no-data');
+  if (noData && !noData.dataset.linked) {
+    noData.dataset.linked = '1';
+    noData.querySelector('strong')?.addEventListener('click', () => navigateTo('input'));
+    const s = noData.querySelector('strong');
+    if (s) s.style.cursor = 'pointer';
+  }
+}
 
 let _lastProcKey  = '';
 let _lastPageKey  = '';
 let _running      = false;
-
-// ─── Tab activation ───────────────────────────────────────────────────────────
 
 function _onTabActivated() {
   const procKey = JSON.stringify(AppState.processes);
@@ -36,7 +40,6 @@ function _onTabActivated() {
 
   noData.style.display = 'none';
 
-  // Use cached result if inputs haven't changed
   if (
     AppState.comparisonResult &&
     procKey === _lastProcKey &&
@@ -50,13 +53,10 @@ function _onTabActivated() {
 
   if (_running) return;
 
-  // Start progressive computation
   content.style.display = 'none';
   loading.style.display = '';
   _runComparison(AppState.processes, AppState.referenceString, AppState.memoryConfig, procKey, pageKey);
 }
-
-// ─── Progressive computation (yields between algorithms) ─────────────────────
 
 async function _runComparison(processes, refs, memConfig, procKey, pageKey) {
   _running = true;
@@ -64,25 +64,25 @@ async function _runComparison(processes, refs, memConfig, procKey, pageKey) {
   const loading = document.getElementById('cmp-loading');
   const content = document.getElementById('cmp-content');
 
-  _setLoadingText('Running scheduling algorithms…');
+  _setLoadingText('Ejecutando algoritmos de scheduling…');
 
   const schedulingComparisons = [];
   for (const config of DEFAULT_SCHEDULING_CONFIGS) {
     await _yield();
-    _setLoadingText(`Running ${config.algorithm}…`);
+    _setLoadingText(`Ejecutando ${config.algorithm}…`);
     try {
       const { schedulingComparisons: sc } = compareScheduling(processes, [config]);
       if (sc && sc.length > 0) schedulingComparisons.push(sc[0]);
     } catch (_) { /* skip */ }
   }
 
-  _setLoadingText('Running page replacement algorithms…');
+  _setLoadingText('Ejecutando algoritmos de paginación…');
   let pageResult = { pageReplacementComparisons: [] };
 
   if (refs && refs.length > 0 && memConfig && memConfig.numFrames > 0) {
     for (const algo of ALL_PAGE_ALGORITHMS) {
       await _yield();
-      _setLoadingText(`Running ${algo}…`);
+      _setLoadingText(`Ejecutando ${algo}…`);
       try {
         const { pageReplacementComparisons: pc } = comparePageReplacement(memConfig.numFrames, refs, [algo]);
         if (pc && pc.length > 0) pageResult.pageReplacementComparisons.push(pc[0]);
@@ -104,6 +104,9 @@ async function _runComparison(processes, refs, memConfig, procKey, pageKey) {
   if (loading) loading.style.display = 'none';
   if (content) content.style.display = '';
   _drawCharts(result);
+
+  const totalAlgos = schedulingComparisons.length + pageResult.pageReplacementComparisons.length;
+  toast(`Comparación completa — ${totalAlgos} algoritmos evaluados.`, 'ok');
 }
 
 function _yield() {
@@ -114,8 +117,6 @@ function _setLoadingText(msg) {
   const el = document.getElementById('cmp-loading-msg');
   if (el) el.textContent = msg;
 }
-
-// ─── Chart rendering ──────────────────────────────────────────────────────────
 
 function _drawCharts(result) {
   _drawSchedulingChart(result.schedulingComparisons || []);
@@ -164,19 +165,19 @@ function _renderBestSummary(result) {
     const bestWT  = sc.reduce((a, b) => a.metrics.avgWaitingTime    <= b.metrics.avgWaitingTime    ? a : b);
     const bestRT  = sc.reduce((a, b) => a.metrics.avgResponseTime   <= b.metrics.avgResponseTime   ? a : b);
 
-    items.push({ label: 'Best Avg Thread TAT', algo: bestTAT.algorithm, val: bestTAT.metrics.avgTurnaroundTime.toFixed(2) });
-    items.push({ label: 'Best Avg Thread WT',  algo: bestWT.algorithm,  val: bestWT.metrics.avgWaitingTime.toFixed(2)    });
-    items.push({ label: 'Best Avg Thread RT',  algo: bestRT.algorithm,  val: bestRT.metrics.avgResponseTime.toFixed(2)   });
+    items.push({ label: 'Mejor TAT promedio', algo: bestTAT.algorithm, val: bestTAT.metrics.avgTurnaroundTime.toFixed(2) });
+    items.push({ label: 'Mejor WT promedio',  algo: bestWT.algorithm,  val: bestWT.metrics.avgWaitingTime.toFixed(2)    });
+    items.push({ label: 'Mejor RT promedio',  algo: bestRT.algorithm,  val: bestRT.metrics.avgResponseTime.toFixed(2)   });
   }
 
   if (pc && pc.length > 0) {
     const bestFaults = pc.reduce((a, b) => a.totalFaults <= b.totalFaults ? a : b);
-    items.push({ label: 'Fewest Page Faults', algo: bestFaults.algorithm, val: String(bestFaults.totalFaults) });
+    items.push({ label: 'Menos fallos de página', algo: bestFaults.algorithm, val: String(bestFaults.totalFaults) });
   }
 
   const title = document.createElement('div');
   title.className = 'cmp-best-title';
-  title.textContent = '★ Best Performers';
+  title.textContent = '★ Mejores resultados';
   el.appendChild(title);
 
   const grid = document.createElement('div');

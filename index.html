@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CoreView — OS Scheduling &amp; Memory Simulator</title>
+  <title>CoreView — Simulador de Scheduling y Paginación</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -17,17 +17,24 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <span class="sidebar-brand-name">CoreView</span>
-        <span class="sidebar-brand-sub">OS Simulator</span>
+        <span class="sidebar-brand-sub">Simulador OS</span>
       </div>
       <nav class="sidebar-nav" aria-label="Main navigation">
-        <button data-tab="input"      aria-label="Input screen">Input</button>
-        <button data-tab="scheduling" aria-label="Scheduling screen">Scheduling</button>
-        <button data-tab="memory"     aria-label="Memory screen">Memory</button>
-        <button data-tab="paging"     aria-label="Page Replacement screen">Page Replacement</button>
-        <button data-tab="threads"    aria-label="Threads screen">Threads</button>
-        <button data-tab="metrics"    aria-label="Metrics screen">Metrics</button>
-        <button data-tab="comparison" aria-label="Comparison screen">Comparison</button>
+        <button data-tab="home"       aria-label="Inicio">Inicio</button>
+        <button data-tab="input"      aria-label="Entrada de procesos">1. Entrada</button>
+        <button data-tab="scheduling" aria-label="Scheduling">2. Scheduling</button>
+        <button data-tab="memory"     aria-label="Memoria">3. Memoria</button>
+        <button data-tab="paging"     aria-label="Paginación">4. Paginación</button>
+        <button data-tab="threads"    aria-label="Threads">5. Threads</button>
+        <button data-tab="metrics"    aria-label="Métricas">6. Métricas</button>
+        <button data-tab="comparison" aria-label="Comparación">7. Comparación</button>
+        <button data-tab="glossary"   aria-label="Glosario" class="sidebar-nav-secondary">Glosario</button>
       </nav>
+
+      <div class="sidebar-status" id="app-status">
+        <span class="app-status-dot app-status-dot--idle" id="app-status-dot"></span>
+        <span id="app-status-text">Sin datos cargados</span>
+      </div>
     </aside>
 
     <div class="app-body">
@@ -40,76 +47,222 @@
       </button>
 
       <main>
-        <div data-screen="input">
-          <h2>Input</h2>
-          <p>Define processes, threads, and memory configuration here.</p>
+        <!-- ── Inicio ──────────────────────────────────────────────────────── -->
+        <div data-screen="home">
+          <section class="hero">
+            <h1 class="hero-title">CoreView</h1>
+            <p class="hero-subtitle">
+              Simulador interactivo de <b>algoritmos de planificación de CPU</b> y
+              <b>reemplazo de páginas en memoria</b> para sistemas operativos.
+            </p>
+
+            <div class="hero-actions">
+              <button class="inp-btn inp-btn-primary" id="hero-start">Comenzar simulación →</button>
+              <button class="inp-btn" id="hero-load-example">Cargar ejemplo</button>
+            </div>
+          </section>
+
+          <section class="home-grid">
+            <article class="home-card">
+              <div class="home-card-icon">①</div>
+              <h3>Define tus procesos</h3>
+              <p>Configura tiempos de llegada, ráfaga, prioridad y memoria. Importa desde un archivo <code>.txt</code> o ingresa manualmente.</p>
+            </article>
+            <article class="home-card">
+              <div class="home-card-icon">②</div>
+              <h3>Visualiza algoritmos</h3>
+              <p>Observa paso a paso cómo FCFS, SJF, RR, MLFQ y otros toman decisiones. Diagrama de Gantt, cola de listos y estados.</p>
+            </article>
+            <article class="home-card">
+              <div class="home-card-icon">③</div>
+              <h3>Compara y analiza</h3>
+              <p>Métricas de rendimiento (TAT, WT, RT) y reemplazo de páginas (FIFO, LRU, Optimal) lado a lado para encontrar el mejor.</p>
+            </article>
+          </section>
+
+          <section class="home-section">
+            <h2 class="home-section-title">¿Qué algoritmos incluye?</h2>
+            <div class="home-algos">
+              <div class="home-algos-col">
+                <h4>Planificación de CPU</h4>
+                <ul>
+                  <li><b>FCFS</b> — First Come First Served</li>
+                  <li><b>SJF</b> — Shortest Job First</li>
+                  <li><b>SRTF</b> — Shortest Remaining Time First</li>
+                  <li><b>HRRN</b> — Highest Response Ratio Next</li>
+                  <li><b>RR</b> — Round Robin</li>
+                  <li><b>Priority</b> — Por prioridades (expropiativo)</li>
+                  <li><b>MLQ</b> — Multilevel Queue</li>
+                  <li><b>MLFQ</b> — Multilevel Feedback Queue</li>
+                </ul>
+              </div>
+              <div class="home-algos-col">
+                <h4>Reemplazo de páginas</h4>
+                <ul>
+                  <li><b>FIFO</b> — First In First Out</li>
+                  <li><b>LRU</b> — Least Recently Used</li>
+                  <li><b>Optimal</b> — Algoritmo óptimo (referencia teórica)</li>
+                  <li><b>Clock</b> — Algoritmo del reloj</li>
+                  <li><b>Second Chance</b> — Segunda oportunidad</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section class="home-section">
+            <h2 class="home-section-title">Flujo recomendado</h2>
+            <ol class="home-flow">
+              <li><b>Entrada</b> — Define procesos (PID, llegada, ráfaga, prioridad, páginas) y configura la memoria.</li>
+              <li><b>Scheduling</b> — Elige un algoritmo de CPU y observa la animación.</li>
+              <li><b>Memoria</b> — Revisa la asignación inicial de marcos físicos.</li>
+              <li><b>Paginación</b> — Ejecuta un algoritmo de reemplazo sobre la cadena de referencias.</li>
+              <li><b>Métricas / Comparación</b> — Analiza resultados y compara algoritmos.</li>
+            </ol>
+          </section>
         </div>
 
-        <div data-screen="scheduling">
-          <h2>Scheduling</h2>
-          <p>Scheduling algorithm visualization will appear here.</p>
-        </div>
-
-        <div data-screen="memory">
-          <h2>Memory</h2>
-          <p>Memory frame allocation grid will appear here.</p>
-        </div>
-
-        <div data-screen="paging">
-          <h2>Page Replacement</h2>
-          <p>Page replacement step-by-step trace will appear here.</p>
-        </div>
-
-        <div data-screen="threads">
-          <h2>Threads</h2>
-          <p>Thread lifecycle visualization will appear here.</p>
-        </div>
+        <!-- ── Pantallas dinámicas (las pueblan los screens/*.js) ─────────── -->
+        <div data-screen="input"></div>
+        <div data-screen="scheduling"></div>
+        <div data-screen="memory"></div>
+        <div data-screen="paging"></div>
+        <div data-screen="threads"></div>
 
         <div data-screen="metrics">
-          <h2>Metrics</h2>
+          <h2>Métricas</h2>
+          <p class="screen-desc">Resumen de rendimiento del último algoritmo de scheduling ejecutado, junto con el resumen de paginación.</p>
           <div id="metrics-no-data" class="screen-no-data">
-            Run a scheduling algorithm on the <strong>Scheduling</strong> tab first.
+            Ejecuta un algoritmo de scheduling en la pestaña <strong>Scheduling</strong> primero.
           </div>
           <div id="metrics-content" style="display:none">
             <div id="metrics-dashboard"></div>
             <div class="metrics-screen-section">
-              <div class="sched-section-title">Thread Metrics — Bar Charts (TAT / WT / RT)</div>
+              <div class="sched-section-title">Métricas por thread — Gráfica de barras (TAT / WT / RT)</div>
               <canvas id="metrics-bar-chart"></canvas>
             </div>
             <div class="metrics-screen-section">
-              <div class="sched-section-title">Page Replacement Summary</div>
+              <div class="sched-section-title">Resumen de Reemplazo de Páginas</div>
               <div id="metrics-paging-info" class="metrics-paging-info"></div>
             </div>
           </div>
         </div>
 
         <div data-screen="comparison">
-          <h2>Comparison</h2>
+          <h2>Comparación de algoritmos</h2>
+          <p class="screen-desc">Ejecuta todos los algoritmos sobre los mismos datos y compara su rendimiento. La estrella ★ marca el mejor en cada métrica.</p>
           <div id="cmp-no-data" class="screen-no-data">
-            Add processes on the <strong>Input</strong> tab first.
+            Agrega procesos en la pestaña <strong>Entrada</strong> y ejecuta la simulación primero.
           </div>
           <div id="cmp-loading" class="cmp-loading" style="display:none">
             <span class="cmp-loading-spinner"></span>
-            <span id="cmp-loading-msg">Running algorithms…</span>
+            <span id="cmp-loading-msg">Ejecutando algoritmos…</span>
           </div>
           <div id="cmp-content" style="display:none">
             <div class="cmp-section">
-              <div class="cmp-section-title">Scheduling Algorithms — Side-by-Side Avg Thread Metrics</div>
-              <div class="cmp-legend-note">★ = best for that metric &nbsp;|&nbsp; Blue = Avg Thread TAT &nbsp; Orange = Avg Thread WT &nbsp; Green = Avg Thread RT</div>
+              <div class="cmp-section-title">Algoritmos de Scheduling — Métricas promedio por thread</div>
+              <div class="cmp-legend-note">★ = mejor en esa métrica &nbsp;|&nbsp; Azul = TAT promedio &nbsp; Naranja = WT promedio &nbsp; Verde = RT promedio</div>
               <canvas id="cmp-sched-chart"></canvas>
             </div>
             <div id="cmp-page-section" class="cmp-section">
-              <div class="cmp-section-title">Page Replacement Algorithms — Total Page Faults</div>
-              <div class="cmp-legend-note">★ = fewest faults &nbsp;|&nbsp; Percentages show hit rate</div>
+              <div class="cmp-section-title">Algoritmos de Reemplazo de Páginas — Total de fallos</div>
+              <div class="cmp-legend-note">★ = menos fallos &nbsp;|&nbsp; Los porcentajes muestran la tasa de aciertos</div>
               <canvas id="cmp-page-chart"></canvas>
             </div>
             <div id="cmp-best-summary" class="cmp-best"></div>
           </div>
         </div>
+
+        <!-- ── Glosario ─────────────────────────────────────────────────────── -->
+        <div data-screen="glossary">
+          <h2>Glosario de términos</h2>
+          <p class="screen-desc">Referencia rápida de la terminología utilizada en el simulador.</p>
+
+          <section class="gl-section">
+            <h3>Métricas de Scheduling</h3>
+            <dl class="gl-list">
+              <dt>CT — Completion Time (Tiempo de finalización)</dt>
+              <dd>Instante en el que un proceso/thread termina su ejecución.</dd>
+
+              <dt>TAT — Turnaround Time (Tiempo de retorno)</dt>
+              <dd>Tiempo total que pasa el proceso en el sistema. <code>TAT = CT − Arrival</code>. Menor es mejor.</dd>
+
+              <dt>WT — Waiting Time (Tiempo de espera)</dt>
+              <dd>Tiempo total que el proceso pasó en la cola de listos. <code>WT = TAT − Burst</code>. Menor es mejor.</dd>
+
+              <dt>RT — Response Time (Tiempo de respuesta)</dt>
+              <dd>Tiempo desde la llegada hasta que recibe CPU por primera vez. <code>RT = First Run − Arrival</code>. Menor es mejor.</dd>
+
+              <dt>CPU Utilization</dt>
+              <dd>Porcentaje del tiempo total en que la CPU estuvo ejecutando trabajo (no inactiva).</dd>
+
+              <dt>Throughput</dt>
+              <dd>Threads completados por unidad de tiempo.</dd>
+
+              <dt>Context Switch</dt>
+              <dd>Cambio de contexto: cuando la CPU pasa de ejecutar un proceso/thread a otro.</dd>
+            </dl>
+          </section>
+
+          <section class="gl-section">
+            <h3>Algoritmos de Scheduling</h3>
+            <dl class="gl-list">
+              <dt>FCFS — First Come First Served</dt>
+              <dd>No expropiativo. Atiende en orden de llegada. Simple pero penaliza procesos cortos detrás de largos.</dd>
+
+              <dt>SJF — Shortest Job First</dt>
+              <dd>No expropiativo. Selecciona el proceso con menor ráfaga. Optimiza WT pero requiere conocer la duración a priori.</dd>
+
+              <dt>SRTF — Shortest Remaining Time First</dt>
+              <dd>Versión expropiativa de SJF. Si llega un proceso con menor tiempo restante, expropia al actual.</dd>
+
+              <dt>HRRN — Highest Response Ratio Next</dt>
+              <dd>No expropiativo. Selecciona por ratio <code>(espera + burst) / burst</code>. Evita inanición.</dd>
+
+              <dt>RR — Round Robin</dt>
+              <dd>Expropiativo. Cada proceso recibe un quantum fijo de CPU. Justo para todos.</dd>
+
+              <dt>Priority — Por prioridades (expropiativo)</dt>
+              <dd>Selecciona el de mayor prioridad (menor número). Puede causar inanición sin envejecimiento.</dd>
+
+              <dt>MLQ — Multilevel Queue</dt>
+              <dd>Múltiples colas con prioridad fija. Cada cola usa su propio algoritmo.</dd>
+
+              <dt>MLFQ — Multilevel Feedback Queue</dt>
+              <dd>Como MLQ pero los procesos pueden cambiar de cola dinámicamente. Soporta envejecimiento.</dd>
+            </dl>
+          </section>
+
+          <section class="gl-section">
+            <h3>Memoria y Paginación</h3>
+            <dl class="gl-list">
+              <dt>Frame (Marco)</dt>
+              <dd>Bloque físico fijo de memoria. La memoria se divide en marcos del mismo tamaño que las páginas.</dd>
+
+              <dt>Page (Página)</dt>
+              <dd>Bloque lógico de un proceso. Cada página puede cargarse en cualquier marco libre.</dd>
+
+              <dt>Page Fault (Fallo de página)</dt>
+              <dd>Ocurre cuando la página solicitada no está en memoria. Hay que cargarla, posiblemente reemplazando otra.</dd>
+
+              <dt>Hit / Hit Rate</dt>
+              <dd>Acierto: la página ya estaba en memoria. La tasa de aciertos es <code>hits / total</code>.</dd>
+
+              <dt>Internal Fragmentation</dt>
+              <dd>Espacio desperdiciado dentro del último marco asignado a un proceso cuando éste no llena el marco completo.</dd>
+
+              <dt>FIFO / LRU / Optimal / Clock</dt>
+              <dd>Estrategias para decidir qué página expulsar cuando ocurre un fallo: la más vieja, la menos recientemente usada, la que se usará más tarde, o usando un bit de referencia circular.</dd>
+            </dl>
+          </section>
+        </div>
+
       </main>
     </div>
 
   </div><!-- /.app-shell -->
+
+  <!-- Toast container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Overlay for mobile sidebar -->
   <div class="sidebar-overlay" id="sidebar-overlay" aria-hidden="true"></div>
@@ -131,7 +284,9 @@
         }
       });
     });
-    document.querySelector('[data-tab]').click();
+    // Activate Inicio by default
+    var homeBtn = document.querySelector('[data-tab="home"]');
+    (homeBtn || document.querySelector('[data-tab]')).click();
 
     // Mobile sidebar toggle
     var sidebar = document.getElementById('sidebar');

@@ -16,13 +16,17 @@ import { renderReadyQueue }     from '../render/ready-queue.js';
 import { renderStateDiagram }   from '../render/state-diagram.js';
 import { renderMetricsDashboard } from '../render/metrics-dashboard.js';
 import { pidToColor }             from '../render/color-utils.js';
+import { navigateTo }             from '../render/ui-feedback.js';
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 
 const A1_PROCESSES = [
-  { pid: 1, arrivalTime: 0, burstTime: 5, priority: 2, sharedPages: 4, numPages: 5, threads: [] },
-  { pid: 2, arrivalTime: 1, burstTime: 3, priority: 1, sharedPages: 3, numPages: 4, threads: [] },
-  { pid: 3, arrivalTime: 2, burstTime: 7, priority: 3, sharedPages: 5, numPages: 8, threads: [] },
+  { pid: 1, arrivalTime: 0, burstTime: 5, priority: 2, sharedPages: 4, numPages: 5,
+    threads: [{ tid: 1, parentPid: 1, arrivalTime: 0, burstTime: 5, priority: 2, state: 'NEW', remainingTime: 5, stackPages: 1 }] },
+  { pid: 2, arrivalTime: 1, burstTime: 3, priority: 1, sharedPages: 3, numPages: 4,
+    threads: [{ tid: 2, parentPid: 2, arrivalTime: 1, burstTime: 3, priority: 1, state: 'NEW', remainingTime: 3, stackPages: 1 }] },
+  { pid: 3, arrivalTime: 2, burstTime: 7, priority: 3, sharedPages: 5, numPages: 6,
+    threads: [{ tid: 3, parentPid: 3, arrivalTime: 2, burstTime: 7, priority: 3, state: 'NEW', remainingTime: 6, stackPages: 1 }] },
 ];
 
 const DEFAULT_MLQ_CONFIG = {
@@ -43,12 +47,23 @@ const DEFAULT_MLFQ_CONFIG = {
   ],
 };
 
+const ALGO_DESCRIPTIONS = {
+  FCFS: 'First Come First Served — atiende en orden de llegada (no expropiativo).',
+  SJF:  'Shortest Job First — selecciona la ráfaga más corta (no expropiativo).',
+  HRRN: 'Highest Response Ratio Next — usa ratio (espera + burst) / burst.',
+  RR:   'Round Robin — cada thread recibe un quantum fijo de CPU.',
+  SRTF: 'Shortest Remaining Time First — versión expropiativa de SJF.',
+  PRIORITY_PREEMPTIVE: 'Priority — selecciona por prioridad, expropiativo (menor número = mayor prioridad).',
+  MLQ:  'Multilevel Queue — múltiples colas con algoritmo distinto por nivel.',
+  MLFQ: 'Multilevel Feedback Queue — colas dinámicas con envejecimiento.',
+};
+
 // ─── Module state ─────────────────────────────────────────────────────────────
 
-const _cache = new Map();    // cacheKey → SchedulingTrace
-let _lastProcKey = '';       // JSON of processes when cache was built
-let _controller  = null;     // current AnimationController
-let _prevProcessStates = null; // for state diagram transition tracking
+const _cache = new Map();
+let _lastProcKey = '';
+let _controller  = null;
+let _prevProcessStates = null;
 
 // ─── Cache helpers ────────────────────────────────────────────────────────────
 
@@ -69,8 +84,6 @@ function _getCached(cacheKey, compute) {
   if (!_cache.has(cacheKey)) _cache.set(cacheKey, compute());
   return _cache.get(cacheKey);
 }
-
-// ─── Label / color maps (built per trace) ────────────────────────────────────
 
 function _buildLabelMap(trace) {
   const byPid = new Map();
@@ -95,8 +108,6 @@ function _buildColorMap(trace) {
   for (const m of trace.threadMetrics) map.set(m.tid, pidToColor(m.pid));
   return map;
 }
-
-// ─── Queue-levels renderer (inline, MLQ/MLFQ only) ───────────────────────────
 
 function _renderQueueLevels(container, entry, config, labelMap, colorMap) {
   container.innerHTML = '';
@@ -131,7 +142,7 @@ function _renderQueueLevels(container, entry, config, labelMap, colorMap) {
     if (ql.entities.length === 0) {
       const emp = document.createElement('span');
       emp.className = 'rq-empty';
-      emp.textContent = '(empty)';
+      emp.textContent = '(vacía)';
       slot.appendChild(emp);
     } else {
       for (const e of ql.entities) {
@@ -139,7 +150,7 @@ function _renderQueueLevels(container, entry, config, labelMap, colorMap) {
         chip.className = 'sched-ql-chip';
         chip.textContent = e.label || labelMap.get(e.tid) || `T${e.tid}`;
         chip.style.backgroundColor = colorMap.get(e.tid) || '#888';
-        chip.title = `rem: ${e.remainingTime}`;
+        chip.title = `restante: ${e.remainingTime}`;
         slot.appendChild(chip);
       }
     }
@@ -147,7 +158,6 @@ function _renderQueueLevels(container, entry, config, labelMap, colorMap) {
     container.appendChild(row);
   }
 
-  // Show promotions/demotions for MLFQ
   if (isMlfq && entry.promotions && entry.promotions.length > 0) {
     const note = document.createElement('div');
     note.className = 'sched-ql-note sched-ql-note--promote';
@@ -173,7 +183,14 @@ export function initSchedulingScreen() {
   if (!root) return;
 
   root.innerHTML = `
-    <h2>Scheduling</h2>
+    <h2>Scheduling de CPU</h2>
+    <p class="screen-desc">
+      Selecciona un algoritmo y observa cómo asigna la CPU paso a paso. El
+      diagrama de Gantt muestra la línea de tiempo, la cola de listos refleja
+      qué threads esperan, y el diagrama de estados muestra las transiciones.
+    </p>
+
+    <div id="sched-data-banner"></div>
 
     <div class="sched-algo-bar">
       <button class="sched-algo-btn" data-algo="FCFS">FCFS</button>
@@ -181,33 +198,35 @@ export function initSchedulingScreen() {
       <button class="sched-algo-btn" data-algo="HRRN">HRRN</button>
       <button class="sched-algo-btn" data-algo="RR">RR</button>
       <button class="sched-algo-btn" data-algo="SRTF">SRTF</button>
-      <button class="sched-algo-btn" data-algo="PRIORITY_PREEMPTIVE">Priority</button>
+      <button class="sched-algo-btn" data-algo="PRIORITY_PREEMPTIVE">Prioridad</button>
       <button class="sched-algo-btn" data-algo="MLQ">MLQ</button>
       <button class="sched-algo-btn" data-algo="MLFQ">MLFQ</button>
     </div>
 
+    <div id="sched-algo-desc" class="sched-config-panel"></div>
+
     <div id="sched-cfg-rr"    class="sched-config-panel" hidden>
       <label>Quantum (ticks):
-        <input type="number" id="sched-quantum" class="inp-num" min="1" value="2" style="width:60px">
+        <input type="number" id="sched-quantum" class="inp-num" min="1" max="20" value="2" style="width:60px">
       </label>
     </div>
 
     <div id="sched-cfg-mlq"  class="sched-config-panel" hidden>
-      <strong>Default MLQ config:</strong>
-      Q1 RR q=2 (priority 1) · Q2 RR q=4 (priority 2) · Q3 FCFS (priority 3+)
+      <strong>Configuración MLQ por defecto:</strong>
+      Q1 RR q=2 (pri 1) · Q2 RR q=4 (pri 2) · Q3 FCFS (pri 3+)
     </div>
 
     <div id="sched-cfg-mlfq" class="sched-config-panel" hidden>
-      <strong>Default MLFQ config:</strong>
-      Q0 RR q=2 · Q1 RR q=4 · Q2 FCFS · Aging: 15 ticks in Q2 → promote to Q0
+      <strong>Configuración MLFQ por defecto:</strong>
+      Q0 RR q=2 · Q1 RR q=4 · Q2 FCFS · Aging: 15 ticks en Q2 → promueve a Q0
     </div>
 
     <div class="sched-controls">
-      <button data-action="play">▶ Play</button>
-      <button data-action="pause">⏸ Pause</button>
-      <button data-action="step-back">⏮ Step Back</button>
-      <button data-action="step-forward">⏭ Step Forward</button>
-      <label>Speed:
+      <button data-action="play"         title="Reproducir">▶ Play</button>
+      <button data-action="pause"        title="Pausar">⏸ Pausa</button>
+      <button data-action="step-back"    title="Paso atrás">⏮ Atrás</button>
+      <button data-action="step-forward" title="Paso adelante">⏭ Siguiente</button>
+      <label>Velocidad:
         <select data-action="speed">
           <option value="1">1×</option>
           <option value="2">2×</option>
@@ -215,37 +234,51 @@ export function initSchedulingScreen() {
         </select>
       </label>
       <span class="sched-step">
-        Step <span id="sched-step-display">0</span> / <span id="sched-step-total">0</span>
+        Paso <span id="sched-step-display">0</span> / <span id="sched-step-total">0</span>
       </span>
     </div>
 
     <div class="sched-section">
-      <div class="sched-section-title">Gantt Chart</div>
+      <div class="sched-section-title">
+        Diagrama de Gantt
+        <span class="help-hint" tabindex="0" data-tooltip="Línea de tiempo que muestra qué thread tiene la CPU en cada tick. Cada color corresponde a un thread distinto.">?</span>
+      </div>
       <canvas id="sched-gantt" width="900" height="220"></canvas>
     </div>
 
     <div class="sched-section">
-      <div class="sched-section-title">Ready Queue</div>
+      <div class="sched-section-title">
+        Cola de listos
+        <span class="help-hint" tabindex="0" data-tooltip="Threads que están esperando CPU en este tick. Se muestra DESPUÉS del despacho: el thread que está corriendo no aparece aquí.">?</span>
+      </div>
       <div id="sched-ready-queue" class="rq-container"></div>
     </div>
 
     <div id="sched-queue-levels-wrap" class="sched-section" hidden>
-      <div class="sched-section-title">Queue Levels</div>
+      <div class="sched-section-title">
+        Niveles de cola
+        <span class="help-hint" tabindex="0" data-tooltip="MLQ y MLFQ usan varias colas. Cada nivel tiene su propio algoritmo y prioridad. MLFQ permite promociones (↑) y degradaciones (↓) entre colas.">?</span>
+      </div>
       <div id="sched-queue-levels" class="sched-queue-levels"></div>
     </div>
 
     <div class="sched-section">
-      <div class="sched-section-title">Process State Diagram</div>
+      <div class="sched-section-title">
+        Diagrama de estados
+        <span class="help-hint" tabindex="0" data-tooltip="Estados de cada proceso a lo largo del tiempo: NEW (recién creado) · READY (esperando CPU) · RUNNING (ejecutándose) · WAITING · TERMINATED (finalizado).">?</span>
+      </div>
       <canvas id="sched-state-diagram" width="900" height="300"></canvas>
     </div>
 
     <div class="sched-section">
-      <div class="sched-section-title">Metrics</div>
+      <div class="sched-section-title">
+        Métricas
+        <span class="help-hint" tabindex="0" data-tooltip="TAT (Turnaround) = CT − Arrival. WT (Waiting) = TAT − Burst. RT (Response) = First Run − Arrival. Menor es mejor. Ver pestaña Glosario para más detalles." data-tooltip-pos="left">?</span>
+      </div>
       <div id="sched-metrics"></div>
     </div>
   `;
 
-  // ── DOM refs ────────────────────────────────────────────────────────────
   const ganttCanvas     = root.querySelector('#sched-gantt');
   const ganttCtx        = ganttCanvas.getContext('2d');
   const stateCanvas     = root.querySelector('#sched-state-diagram');
@@ -259,21 +292,45 @@ export function initSchedulingScreen() {
   const cfgRR           = root.querySelector('#sched-cfg-rr');
   const cfgMLQ          = root.querySelector('#sched-cfg-mlq');
   const cfgMLFQ         = root.querySelector('#sched-cfg-mlfq');
+  const algoDescEl      = root.querySelector('#sched-algo-desc');
+  const dataBannerEl    = root.querySelector('#sched-data-banner');
 
   let currentAlgo = 'FCFS';
   let currentTrace = null;
   let labelMap = null;
   let colorMap = null;
 
-  // ── Config panels ────────────────────────────────────────────────────────
   function _showConfig(algo) {
     cfgRR.hidden   = algo !== 'RR';
     cfgMLQ.hidden  = algo !== 'MLQ';
     cfgMLFQ.hidden = algo !== 'MLFQ';
     qlWrap.hidden  = algo !== 'MLQ' && algo !== 'MLFQ';
+    algoDescEl.textContent = ALGO_DESCRIPTIONS[algo] || '';
   }
 
-  // ── Compute trace ────────────────────────────────────────────────────────
+  function _renderDataBanner() {
+    const usingUserData = AppState.processes && AppState.processes.length > 0;
+    if (usingUserData) {
+      dataBannerEl.innerHTML =
+        `<div class="banner-info">` +
+        `  <span class="banner-icon">●</span>` +
+        `  Ejecutando con tus <b>${AppState.processes.length}</b> proceso(s) ingresados.` +
+        `</div>`;
+    } else {
+      dataBannerEl.innerHTML =
+        `<div class="banner-info banner-warn">` +
+        `  <span class="banner-icon">⚠</span>` +
+        `  Mostrando un <b>ejemplo predeterminado</b> (3 procesos). ` +
+        `  <a href="#" id="sched-goto-input">Ir a Entrada para definir los tuyos →</a>` +
+        `</div>`;
+      const link = dataBannerEl.querySelector('#sched-goto-input');
+      if (link) link.addEventListener('click', (e) => {
+        e.preventDefault();
+        navigateTo('input');
+      });
+    }
+  }
+
   function _getProcesses() {
     return AppState.processes && AppState.processes.length > 0
       ? AppState.processes
@@ -304,12 +361,12 @@ export function initSchedulingScreen() {
     return algo;
   }
 
-  // ── Run and display ───────────────────────────────────────────────────────
   function _run(algo) {
     if (_controller) _controller.pause();
 
     currentAlgo = algo;
     _showConfig(algo);
+    _renderDataBanner();
 
     const key = _cacheKey(algo);
     currentTrace = _getCached(key, () => _computeTrace(algo));
@@ -327,14 +384,11 @@ export function initSchedulingScreen() {
     _controller.onStepChange(_renderStep);
     _renderStep(0);
 
-    // Metrics don't change with animation — render once
     renderMetricsDashboard(metricsContainer, [currentTrace]);
 
-    // Sync speed selector
     root.querySelector('[data-action="speed"]').value = '1';
   }
 
-  // ── Per-step render ───────────────────────────────────────────────────────
   function _renderStep(step) {
     const s = step !== undefined ? step : _controller.getCurrentStep();
     stepDisplay.textContent = String(s);
@@ -355,7 +409,6 @@ export function initSchedulingScreen() {
     _prevProcessStates = entry.processStates;
   }
 
-  // ── Algorithm button clicks ───────────────────────────────────────────────
   root.querySelectorAll('.sched-algo-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       root.querySelectorAll('.sched-algo-btn').forEach(b => b.classList.remove('active'));
@@ -364,12 +417,10 @@ export function initSchedulingScreen() {
     });
   });
 
-  // ── Quantum input re-run ──────────────────────────────────────────────────
   root.querySelector('#sched-quantum').addEventListener('change', () => {
     if (currentAlgo === 'RR') _run('RR');
   });
 
-  // ── Animation controls ────────────────────────────────────────────────────
   root.querySelector('[data-action="play"]').addEventListener('click', () => {
     if (_controller) _controller.play();
   });
@@ -386,13 +437,11 @@ export function initSchedulingScreen() {
     if (_controller) _controller.setSpeed(Number(e.target.value));
   });
 
-  // ── Re-run when tab is activated (picks up input changes) ─────────────────
   document.querySelector('[data-tab="scheduling"]')?.addEventListener('click', () => {
     _ensureFreshCache();
     _run(currentAlgo);
   });
 
-  // ── Initial render ────────────────────────────────────────────────────────
   root.querySelector('[data-algo="FCFS"]').classList.add('active');
   _run('FCFS');
 }

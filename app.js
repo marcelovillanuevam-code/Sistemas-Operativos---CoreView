@@ -8,17 +8,18 @@ import { initPagingScreen }      from './screens/screen-paging.js';
 import { initThreadsScreen }     from './screens/screen-threads.js';
 import { initMetricsScreen }     from './screens/screen-metrics.js';
 import { initComparisonScreen }  from './screens/screen-comparison.js';
+import { setAppStatus }          from './render/ui-feedback.js';
 
 export const AppState = {
-  processes: [],                // Process[] with threads
-  memoryConfig: null,           // MemoryConfig
-  currentAlgorithm: null,       // SchedulingAlgorithm
-  schedulingTrace: null,        // SchedulingTrace (cached)
-  pageReplacementTrace: null,   // PageReplacementTrace (cached)
-  referenceString: [],          // PageRef[]
-  threadTraces: new Map(),      // Map<pid, ThreadTrace>
-  selectedThreadPid: null,      // number | null
-  comparisonResult: null,       // ComparisonResult (cached)
+  processes: [],
+  memoryConfig: null,
+  currentAlgorithm: null,
+  schedulingTrace: null,
+  pageReplacementTrace: null,
+  referenceString: [],
+  threadTraces: new Map(),
+  selectedThreadPid: null,
+  comparisonResult: null,
 };
 
 initInputScreen();
@@ -28,3 +29,6 @@ initPagingScreen();
 initThreadsScreen();
 initMetricsScreen();
 initComparisonScreen();
+
+// Initial header status
+setAppStatus('Sin datos cargados', 'idle');

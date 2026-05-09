@@ -3,6 +3,7 @@
 
 import { AppState }         from '../app.js';
 import { renderMemoryGrid } from '../render/memory-grid.js';
+import { navigateTo }       from '../render/ui-feedback.js';
 
 // Default A1 processes (matches Appendix A.1 — single-threaded)
 const A1_PROCESSES = [
@@ -14,14 +15,10 @@ const A1_PROCESSES = [
     threads: [{ tid: 3, parentPid: 3, arrivalTime: 2, burstTime: 7, priority: 3, stackPages: 1 }] },
 ];
 
-// Default memory config: enough frames for all A1 processes (5+4+6=15) plus empties
 const DEFAULT_CONFIG = { totalMemory: 160, pageSize: 8, numFrames: 20 };
 
 /**
  * Computes MemoryState by allocating processes sequentially into frames.
- * @param {import('../types.js').Process[]} processes
- * @param {import('../types.js').MemoryConfig} config
- * @returns {import('../types.js').MemoryState}
  */
 function _computeMemoryState(processes, config) {
   const { numFrames, pageSize } = config;
@@ -46,8 +43,6 @@ function _computeMemoryState(processes, config) {
         loadedAt:   0,
       };
     }
-    // Internal fragmentation: treat burstTime as process byte size proxy.
-    // Last page is filled with (burstTime % pageSize) bytes; the rest is wasted.
     const frag = (pageSize - (proc.burstTime % pageSize)) % pageSize;
     totalFrag += frag;
   }
@@ -60,23 +55,69 @@ export function initMemoryScreen() {
   if (!root) return;
 
   root.innerHTML = `
-    <h2>Memory</h2>
-    <p class="mem-desc">
-      Physical memory is divided into fixed-size <b>frames</b>.
-      Each process is allocated contiguous frames equal to its total page count
-      (shared pages + stack pages). The last frame of each process may contain
-      <b>internal fragmentation</b> if the process does not fully fill it.
+    <h2>Memoria física</h2>
+    <p class="screen-desc">
+      La memoria está dividida en <b>marcos</b> de tamaño fijo. Cada proceso
+      recibe marcos contiguos según su número total de páginas (compartidas +
+      stacks de threads). El último marco de cada proceso puede tener
+      <b>fragmentación interna</b> si no llena el marco completo.
     </p>
+
+    <div id="mem-data-banner"></div>
+    <div id="mem-warning"></div>
     <div id="mem-container"></div>
   `;
 
   const container = root.querySelector('#mem-container');
+  const bannerEl  = root.querySelector('#mem-data-banner');
+  const warnEl    = root.querySelector('#mem-warning');
+
+  function _renderDataBanner(usingDefaults, config) {
+    if (!usingDefaults) {
+      bannerEl.innerHTML =
+        `<div class="banner-info">` +
+        `  <span class="banner-icon">●</span>` +
+        `  Mostrando asignación de memoria para tus <b>${AppState.processes.length}</b> proceso(s) — ` +
+        `  <b>${config.totalMemory} KB</b> totales · página de <b>${config.pageSize} KB</b> · ` +
+        `  <b>${config.numFrames}</b> marcos.` +
+        `</div>`;
+    } else {
+      bannerEl.innerHTML =
+        `<div class="banner-info banner-warn">` +
+        `  <span class="banner-icon">⚠</span>` +
+        `  Mostrando datos de <b>ejemplo</b>. ` +
+        `  <a href="#" id="mem-goto-input">Ir a Entrada para definir tus procesos y memoria →</a>` +
+        `</div>`;
+      bannerEl.querySelector('#mem-goto-input')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        navigateTo('input');
+      });
+    }
+  }
+
+  function _renderCapacityWarning(processes, config) {
+    const totalRequiredPages = processes.reduce((s, p) => s + p.numPages, 0);
+    if (totalRequiredPages > config.numFrames) {
+      const overflow = totalRequiredPages - config.numFrames;
+      warnEl.innerHTML =
+        `<div class="banner-info banner-warn">` +
+        `  <span class="banner-icon">⚠</span>` +
+        `  Los procesos requieren <b>${totalRequiredPages}</b> páginas totales pero solo hay ` +
+        `  <b>${config.numFrames}</b> marcos disponibles (<b>${overflow}</b> páginas no caben). ` +
+        `  Esto causará fallos de página en el módulo de Paginación.` +
+        `</div>`;
+    } else {
+      warnEl.innerHTML = '';
+    }
+  }
 
   function _render() {
-    const processes = (AppState.processes && AppState.processes.length > 0)
-      ? AppState.processes
-      : A1_PROCESSES;
-    const config = AppState.memoryConfig ?? DEFAULT_CONFIG;
+    const usingDefaults = !(AppState.processes && AppState.processes.length > 0);
+    const processes = usingDefaults ? A1_PROCESSES : AppState.processes;
+    const config    = AppState.memoryConfig ?? DEFAULT_CONFIG;
+
+    _renderDataBanner(usingDefaults, config);
+    _renderCapacityWarning(processes, config);
 
     const memState = _computeMemoryState(processes, config);
     renderMemoryGrid(container, memState, config);

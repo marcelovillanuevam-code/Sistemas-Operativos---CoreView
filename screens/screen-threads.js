@@ -7,6 +7,7 @@ import { renderThreadGantt }     from '../render/thread-visuals.js';
 import { renderMemorySharing }   from '../render/thread-visuals.js';
 import { renderThreadStateDiagram } from '../render/thread-visuals.js';
 import { renderThreadEventLog }  from '../render/thread-visuals.js';
+import { navigateTo }            from '../render/ui-feedback.js';
 
 // ── Default processes (Appendix C.1) ─────────────────────────────────────────
 const C1_PROCESSES = [
@@ -43,20 +44,26 @@ export function initThreadsScreen() {
   if (!root) return;
 
   root.innerHTML = `
-    <h2>Threads</h2>
+    <h2>Vista por threads</h2>
+    <p class="screen-desc">
+      Cada proceso puede tener varios threads que comparten memoria. Selecciona
+      un proceso y observa cómo sus threads avanzan independientemente.
+    </p>
+
+    <div id="th-data-banner"></div>
 
     <div class="th-selector-bar">
-      <label>Process:
+      <label>Proceso:
         <select id="th-proc-select"></select>
       </label>
     </div>
 
     <div class="sched-controls">
-      <button data-action="play">▶ Play</button>
-      <button data-action="pause">⏸ Pause</button>
-      <button data-action="step-back">⏮ Step Back</button>
-      <button data-action="step-forward">⏭ Step Forward</button>
-      <label>Speed:
+      <button data-action="play"         title="Reproducir">▶ Play</button>
+      <button data-action="pause"        title="Pausar">⏸ Pausa</button>
+      <button data-action="step-back"    title="Paso atrás">⏮ Atrás</button>
+      <button data-action="step-forward" title="Paso adelante">⏭ Siguiente</button>
+      <label>Velocidad:
         <select data-action="speed">
           <option value="1">1×</option>
           <option value="2">2×</option>
@@ -64,33 +71,68 @@ export function initThreadsScreen() {
         </select>
       </label>
       <span class="sched-step">
-        Step <span id="th-step-display">0</span> / <span id="th-step-total">0</span>
+        Paso <span id="th-step-display">0</span> / <span id="th-step-total">0</span>
       </span>
     </div>
 
     <div class="sched-section">
-      <div class="sched-section-title">Thread Gantt</div>
+      <div class="sched-section-title">
+        Gantt por threads
+        <span class="help-hint" tabindex="0" data-tooltip="Línea de tiempo donde cada fila es un thread del proceso seleccionado. Cada thread avanza independientemente.">?</span>
+      </div>
       <canvas id="th-gantt" width="900" height="180"></canvas>
     </div>
 
     <div class="sched-section">
-      <div class="sched-section-title">Thread State Diagram</div>
+      <div class="sched-section-title">
+        Diagrama de estados de threads
+        <span class="help-hint" tabindex="0" data-tooltip="Cada thread tiene su propio estado independiente: NEW (creado) · READY (esperando) · RUNNING · WAITING · TERMINATED. El proceso termina cuando todos sus threads terminan (join-barrier).">?</span>
+      </div>
       <canvas id="th-state-diagram" width="900" height="300"></canvas>
     </div>
 
     <div class="sched-section">
-      <div class="sched-section-title">Memory Sharing View</div>
+      <div class="sched-section-title">
+        Memoria compartida vs. privada
+        <span class="help-hint" tabindex="0" data-tooltip="Las páginas compartidas (sharedPages) son únicas para todo el proceso (código, datos, heap). Los stacks son privados por thread (stackPages).">?</span>
+      </div>
       <div id="th-memory-sharing" class="ms-container"></div>
     </div>
 
     <div class="sched-section">
-      <div class="sched-section-title">Event Log</div>
+      <div class="sched-section-title">
+        Bitácora de eventos
+        <span class="help-hint" tabindex="0" data-tooltip="Eventos relevantes ordenados cronológicamente: creación de thread, despacho a CPU, expropiación, finalización y join. Se filtran hasta el tick actual.">?</span>
+      </div>
       <div id="th-event-log" class="tel-container"></div>
     </div>
   `;
 
   // ── DOM refs ────────────────────────────────────────────────────────────────
   const procSelect   = root.querySelector('#th-proc-select');
+  const dataBannerEl = root.querySelector('#th-data-banner');
+
+  function _renderDataBanner() {
+    const usingUserData = AppState.processes && AppState.processes.length > 0;
+    if (usingUserData) {
+      dataBannerEl.innerHTML =
+        `<div class="banner-info">` +
+        `  <span class="banner-icon">●</span>` +
+        `  Mostrando threads de tus <b>${AppState.processes.length}</b> proceso(s).` +
+        `</div>`;
+    } else {
+      dataBannerEl.innerHTML =
+        `<div class="banner-info banner-warn">` +
+        `  <span class="banner-icon">⚠</span>` +
+        `  Mostrando un <b>ejemplo</b> con 3 procesos multi-thread. ` +
+        `  <a href="#" id="th-goto-input">Ir a Entrada para definir tus procesos →</a>` +
+        `</div>`;
+      dataBannerEl.querySelector('#th-goto-input')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        navigateTo('input');
+      });
+    }
+  }
   const ganttCanvas  = root.querySelector('#th-gantt');
   const ganttCtx     = ganttCanvas.getContext('2d');
   const stateCanvas  = root.querySelector('#th-state-diagram');
@@ -210,12 +252,14 @@ export function initThreadsScreen() {
 
   // Re-run when tab activated
   document.querySelector('[data-tab="threads"]')?.addEventListener('click', () => {
+    _renderDataBanner();
     _buildSelector();
     const pid = Number(procSelect.value) || _getProcesses()[0].pid;
     _run(pid);
   });
 
   // ── Initial render ──────────────────────────────────────────────────────────
+  _renderDataBanner();
   _buildSelector();
   const initPid = _getProcesses()[0].pid;
   _run(initPid);

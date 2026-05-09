@@ -1,4 +1,4 @@
-// metrics-dashboard.js — DOM renderer for dual metrics tables: Thread Metrics + Process Metrics.
+// metrics-dashboard.js — DOM renderer for dual metrics tables: Thread Metrics + Process Metrics (join-barrier).
 
 /**
  * @param {HTMLElement} container
@@ -13,23 +13,23 @@ export function renderMetricsDashboard(container, traces) {
   const labelMap = _buildLabelMap(threadMetrics);
   const agg = aggregateMetrics;
 
-  // ── Aggregate metric cards ────────────────────────────────────────────────
+  // ── Aggregate metric cards (label, value, unit, hint) ────────────────────
   const aggEl = document.createElement('div');
   aggEl.className = 'metrics-agg';
 
-  // [label, value, unit]
   const aggItems = [
-    ['CPU Utilization',  agg.cpuUtilization.toFixed(1),   '%'],
-    ['Context Switches', String(agg.totalContextSwitches), ''],
-    ['Throughput',       agg.throughput.toFixed(3),        '/tick'],
-    ['Avg TAT',          agg.avgTurnaroundTime.toFixed(2), 'ticks'],
-    ['Avg WT',           agg.avgWaitingTime.toFixed(2),    'ticks'],
-    ['Avg RT',           agg.avgResponseTime.toFixed(2),   'ticks'],
+    { label: 'Utilización CPU',     val: agg.cpuUtilization.toFixed(1),   unit: '%',     hint: 'Porcentaje del tiempo en que la CPU estuvo ocupada (no inactiva).' },
+    { label: 'Cambios de contexto', val: String(agg.totalContextSwitches), unit: '',      hint: 'Número total de veces que la CPU pasó de un thread a otro.' },
+    { label: 'Throughput',          val: agg.throughput.toFixed(3),        unit: '/tick', hint: 'Threads completados por unidad de tiempo.' },
+    { label: 'TAT promedio',        val: agg.avgTurnaroundTime.toFixed(2), unit: 'ticks', hint: 'Turnaround Time promedio: tiempo en el sistema (CT − Arrival).' },
+    { label: 'WT promedio',         val: agg.avgWaitingTime.toFixed(2),    unit: 'ticks', hint: 'Waiting Time promedio: tiempo en cola de listos (TAT − Burst).' },
+    { label: 'RT promedio',         val: agg.avgResponseTime.toFixed(2),   unit: 'ticks', hint: 'Response Time promedio: tiempo hasta primera CPU (FirstRun − Arrival).' },
   ];
 
-  for (const [label, val, unit] of aggItems) {
+  for (const { label, val, unit, hint } of aggItems) {
     const item = document.createElement('div');
     item.className = 'metrics-agg-item';
+    item.title = hint;
     item.innerHTML =
       `<span class="metrics-agg-label">${label}</span>` +
       `<span class="metrics-agg-value">${val}` +
@@ -42,10 +42,18 @@ export function renderMetricsDashboard(container, traces) {
   // ── Thread Metrics table ──────────────────────────────────────────────────
   const threadTitle = document.createElement('div');
   threadTitle.className = 'metrics-table-title';
-  threadTitle.textContent = 'Thread Metrics';
+  threadTitle.textContent = 'Métricas por thread';
   container.appendChild(threadTitle);
 
-  const tHeaders = ['Label', 'TID', 'PID', 'CT', 'TAT', 'WT', 'RT'];
+  const tHeaders = [
+    { key: 'Etiqueta', hint: 'Identificador visible (P{pid} o P{pid}-T{n}).' },
+    { key: 'TID',      hint: 'Thread ID global (único en toda la simulación).' },
+    { key: 'PID',      hint: 'Process ID al que pertenece el thread.' },
+    { key: 'CT',       hint: 'Completion Time — instante de finalización.' },
+    { key: 'TAT',      hint: 'Turnaround Time = CT − Arrival.' },
+    { key: 'WT',       hint: 'Waiting Time = TAT − Burst.' },
+    { key: 'RT',       hint: 'Response Time = FirstRun − Arrival.' },
+  ];
   const tRows = threadMetrics.map(m => [
     labelMap.get(m.tid) || `T${m.tid}`,
     String(m.tid),
@@ -55,7 +63,7 @@ export function renderMetricsDashboard(container, traces) {
     _f(m.waitingTime),
     _f(m.responseTime),
   ]);
-  tRows.push(['Average', '—', '—',
+  tRows.push(['Promedio', '—', '—',
     _f(agg.avgCompletionTime),
     _f(agg.avgTurnaroundTime),
     _f(agg.avgWaitingTime),
@@ -66,10 +74,17 @@ export function renderMetricsDashboard(container, traces) {
   // ── Process Metrics table (join-barrier) ──────────────────────────────────
   const procTitle = document.createElement('div');
   procTitle.className = 'metrics-table-title';
-  procTitle.textContent = 'Process Metrics (join-barrier)';
+  procTitle.textContent = 'Métricas por proceso (join-barrier)';
+  procTitle.title = 'El proceso termina cuando termina su último thread.';
   container.appendChild(procTitle);
 
-  const pHeaders = ['PID', 'CT', 'TAT', 'WT', 'RT'];
+  const pHeaders = [
+    { key: 'PID', hint: 'Process ID.' },
+    { key: 'CT',  hint: 'Tiempo de finalización (último thread del proceso).' },
+    { key: 'TAT', hint: 'CT − Arrival del proceso.' },
+    { key: 'WT',  hint: 'TAT − suma de bursts de los threads.' },
+    { key: 'RT',  hint: 'Min(thread.firstRunTime) − arrival del proceso.' },
+  ];
   const pRows = processMetrics.map(m => [
     `P${m.pid}`,
     _f(m.completionTime),
@@ -77,8 +92,8 @@ export function renderMetricsDashboard(container, traces) {
     _f(m.waitingTime),
     _f(m.responseTime),
   ]);
-  const pn = processMetrics.length;
-  pRows.push(['Average',
+  const pn = processMetrics.length || 1;
+  pRows.push(['Promedio',
     _f(processMetrics.reduce((s, m) => s + m.completionTime, 0) / pn),
     _f(processMetrics.reduce((s, m) => s + m.turnaroundTime, 0) / pn),
     _f(processMetrics.reduce((s, m) => s + m.waitingTime,    0) / pn),
@@ -117,7 +132,12 @@ function _makeTable(headers, rows, avgRowIndex) {
   const hr = thead.insertRow();
   for (const h of headers) {
     const th = document.createElement('th');
-    th.textContent = h;
+    if (typeof h === 'string') {
+      th.textContent = h;
+    } else {
+      th.textContent = h.key;
+      if (h.hint) th.title = h.hint;
+    }
     hr.appendChild(th);
   }
 
