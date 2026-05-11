@@ -6,6 +6,7 @@ import { initSchedulingScreen }  from './screens/screen-scheduling.js';
 import { initMemoryScreen }      from './screens/screen-memory.js';
 import { initPagingScreen }      from './screens/screen-paging.js';
 import { initThreadsScreen }     from './screens/screen-threads.js';
+import { initThreadsMulticoreScreen } from './screens/threads-multicore.js';
 import { initMetricsScreen }     from './screens/screen-metrics.js';
 import { initComparisonScreen }  from './screens/screen-comparison.js';
 import { setAppStatus }          from './render/ui-feedback.js';
@@ -27,6 +28,7 @@ initSchedulingScreen();
 initMemoryScreen();
 initPagingScreen();
 initThreadsScreen();
+initThreadsMulticoreScreen();
 initMetricsScreen();
 initComparisonScreen();
 

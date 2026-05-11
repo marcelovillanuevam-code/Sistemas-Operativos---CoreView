@@ -91,6 +91,12 @@ function _getCached(cacheKey, compute) {
 }
 
 function _buildLabelMap(trace) {
+  const processLabelByPid = new Map(
+    (AppState.processes || []).map(process => [
+      process.pid,
+      process.forkLabel || `P${process.pid}`,
+    ])
+  );
   const byPid = new Map();
   for (const m of trace.threadMetrics) {
     if (!byPid.has(m.pid)) byPid.set(m.pid, []);
@@ -99,10 +105,11 @@ function _buildLabelMap(trace) {
   for (const tids of byPid.values()) tids.sort((a, b) => a - b);
   const map = new Map();
   for (const [pid, tids] of byPid) {
+    const baseLabel = processLabelByPid.get(pid) || `P${pid}`;
     if (tids.length === 1) {
-      map.set(tids[0], `P${pid}`);
+      map.set(tids[0], baseLabel);
     } else {
-      tids.forEach((tid, i) => map.set(tid, `P${pid}-T${i + 1}`));
+      tids.forEach((tid, i) => map.set(tid, `${baseLabel}-T${i + 1}`));
     }
   }
   return map;
@@ -153,7 +160,7 @@ function _renderQueueLevels(container, entry, config, labelMap, colorMap) {
       for (const e of ql.entities) {
         const chip = document.createElement('div');
         chip.className = 'sched-ql-chip';
-        chip.textContent = e.label || labelMap.get(e.tid) || `T${e.tid}`;
+        chip.textContent = labelMap.get(e.tid) || e.label || `T${e.tid}`;
         chip.style.backgroundColor = colorMap.get(e.tid) || '#888';
         chip.title = `restante: ${e.remainingTime}`;
         slot.appendChild(chip);
@@ -318,10 +325,14 @@ export function initSchedulingScreen() {
   function _renderDataBanner() {
     const usingUserData = AppState.processes && AppState.processes.length > 0;
     if (usingUserData) {
+      const forkCount = AppState.processes
+        .filter(process => process.isForkChild)
+        .length;
       dataBannerEl.innerHTML =
         `<div class="banner-info">` +
         `  <span class="banner-icon">●</span>` +
-        `  Ejecutando con tus <b>${AppState.processes.length}</b> proceso(s) ingresados.` +
+        `  Ejecutando con tus <b>${AppState.processes.length}</b> proceso(s) ingresados` +
+        (forkCount > 0 ? `, incluyendo <b>${forkCount}</b> hijo(s) creado(s) por fork().` : '.') +
         `</div>`;
     } else {
       dataBannerEl.innerHTML =
@@ -405,7 +416,7 @@ export function initSchedulingScreen() {
     const gW = ganttCanvas.width;
     const gH = ganttCanvas.height;
 
-    renderGanttChart(ganttCtx, currentTrace, s, gW, gH);
+    renderGanttChart(ganttCtx, currentTrace, s, gW, gH, { labelMap });
     renderReadyQueue(rqContainer, entry, labelMap, colorMap);
 
     if (currentAlgo === 'MLQ' || currentAlgo === 'MLFQ') {

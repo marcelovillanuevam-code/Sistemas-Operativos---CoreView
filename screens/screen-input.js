@@ -31,13 +31,243 @@ const LIMITS = {
 };
 const IMPORT_ROW_DELAY_MS = 60;
 
-// Auto-incrementing PID counter for the session; never resets on clear (keeps uniqueness).
+const EXAMPLE_PRESETS = [
+  {
+    id: 'basic',
+    title: 'Base 5 columnas',
+    meta: '3 procesos',
+    description: 'Carga minima para FCFS, SJF, Priority y paginacion simple.',
+    memory: { totalMemory: 256, pageSize: 32 },
+    showThreads: false,
+    processes: [
+      { pid: 1, arrivalTime: 0, burstTime: 5, priority: 2, sharedPages: 4, threads: [] },
+      { pid: 2, arrivalTime: 1, burstTime: 3, priority: 1, sharedPages: 3, threads: [] },
+      { pid: 3, arrivalTime: 2, burstTime: 7, priority: 3, sharedPages: 5, threads: [] },
+    ],
+  },
+  {
+    id: 'threads',
+    title: 'Threads escalonados',
+    meta: '3 procesos / 6 threads',
+    description: 'Expone rafagas por thread, llegadas distintas y stacks privados.',
+    memory: { totalMemory: 512, pageSize: 64 },
+    showThreads: true,
+    processes: [
+      {
+        pid: 1,
+        arrivalTime: 0,
+        burstTime: 8,
+        priority: 2,
+        sharedPages: 3,
+        threads: [
+          { arrivalTime: 0, burstTime: 5, stackPages: 1 },
+          { arrivalTime: 0, burstTime: 3, stackPages: 1 },
+        ],
+      },
+      {
+        pid: 2,
+        arrivalTime: 1,
+        burstTime: 4,
+        priority: 1,
+        sharedPages: 3,
+        threads: [
+          { arrivalTime: 1, burstTime: 4, stackPages: 1 },
+        ],
+      },
+      {
+        pid: 3,
+        arrivalTime: 3,
+        burstTime: 7,
+        priority: 3,
+        sharedPages: 4,
+        threads: [
+          { arrivalTime: 3, burstTime: 2, stackPages: 1 },
+          { arrivalTime: 4, burstTime: 3, stackPages: 2 },
+          { arrivalTime: 5, burstTime: 2, stackPages: 1 },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'fork-cow',
+    title: 'Fork + COW',
+    meta: 'Padres, hijos y COW',
+    description: 'Crea hijos con fork() para revisar Copy-on-Write en Memoria.',
+    memory: { totalMemory: 512, pageSize: 32 },
+    showThreads: true,
+    forks: [1, 2],
+    processes: [
+      {
+        pid: 1,
+        arrivalTime: 0,
+        burstTime: 6,
+        priority: 2,
+        sharedPages: 4,
+        threads: [
+          { arrivalTime: 0, burstTime: 4, stackPages: 1 },
+          { arrivalTime: 1, burstTime: 2, stackPages: 1 },
+        ],
+      },
+      {
+        pid: 2,
+        arrivalTime: 2,
+        burstTime: 5,
+        priority: 1,
+        sharedPages: 5,
+        threads: [
+          { arrivalTime: 2, burstTime: 3, stackPages: 2 },
+          { arrivalTime: 3, burstTime: 2, stackPages: 1 },
+        ],
+      },
+      { pid: 3, arrivalTime: 4, burstTime: 4, priority: 4, sharedPages: 2, threads: [] },
+    ],
+  },
+  {
+    id: 'mixed-stress',
+    title: 'Mixto completo',
+    meta: '5 procesos / prioridades',
+    description: 'Combina single-thread, multi-thread, memoria baja y colas con prioridad.',
+    memory: { totalMemory: 256, pageSize: 16 },
+    showThreads: true,
+    processes: [
+      { pid: 1, arrivalTime: 0, burstTime: 9, priority: 4, sharedPages: 6, threads: [] },
+      {
+        pid: 2,
+        arrivalTime: 1,
+        burstTime: 7,
+        priority: 1,
+        sharedPages: 4,
+        threads: [
+          { arrivalTime: 1, burstTime: 2, stackPages: 1 },
+          { arrivalTime: 2, burstTime: 3, stackPages: 2 },
+          { arrivalTime: 3, burstTime: 2, stackPages: 1 },
+        ],
+      },
+      { pid: 3, arrivalTime: 2, burstTime: 4, priority: 2, sharedPages: 3, threads: [] },
+      {
+        pid: 4,
+        arrivalTime: 4,
+        burstTime: 6,
+        priority: 5,
+        sharedPages: 2,
+        threads: [
+          { arrivalTime: 4, burstTime: 3, stackPages: 1 },
+          { arrivalTime: 6, burstTime: 3, stackPages: 2 },
+        ],
+      },
+      { pid: 5, arrivalTime: 6, burstTime: 3, priority: 3, sharedPages: 5, threads: [] },
+    ],
+  },
+];
+
+// Auto-incrementing PID counter; resets to 1 on clear/example load.
 let _nextPid = 1;
 // Map<pid, { localTidCounter: number }>
 const _procMeta = new Map();
 const _forkMetaByPid = new Map();
 let _loadedFileCount = 0;
 let _importRenderToken = 0;
+
+function _helpHint(text, pos = '') {
+  const posAttr = pos ? ` data-tooltip-pos="${pos}"` : '';
+  return `<span class="help-hint" tabindex="0" data-tooltip="${text}"${posAttr}>i</span>`;
+}
+
+function _renderExampleCards() {
+  return EXAMPLE_PRESETS.map((preset, index) => `
+    <button type="button" class="inp-example-card" data-example-id="${preset.id}"${index === 0 ? ' id="inp-load-example"' : ''}>
+      <span class="inp-example-meta">${preset.meta}</span>
+      <span class="inp-example-title">${preset.title}</span>
+      <span class="inp-example-desc">${preset.description}</span>
+      <span class="inp-example-memory">${preset.memory.totalMemory} KB / ${preset.memory.pageSize} KB = ${preset.memory.totalMemory / preset.memory.pageSize} frames</span>
+    </button>
+  `).join('');
+}
+
+function _fieldCell(label, hint, inputHtml, className = '') {
+  return `
+    <td class="inp-field-cell ${className}">
+      <label class="inp-field">
+        <span class="inp-field-top">${label} ${_helpHint(hint)}</span>
+        ${inputHtml}
+      </label>
+    </td>
+  `;
+}
+
+function _processCells(proc, { hasThreads = false, pidCell = null } = {}) {
+  const pid = proc.pid;
+  const threads = Array.isArray(proc.threads) ? proc.threads : [];
+  const threadCount = threads.length;
+  const threadLabel = `${threadCount} thread${threadCount !== 1 ? 's' : ''}`;
+  const toggleText = `▼ ${threadLabel}`;
+
+  return `
+    <td class="inp-pid-cell">
+      <span class="inp-pid-kicker">Proceso</span>
+      ${pidCell || `<span class="inp-pid-main">P${pid}</span>`}
+    </td>
+    ${_fieldCell(
+      'Llegada',
+      `Instante en que el proceso entra al sistema. Tick >= 0. Rango: ${LIMITS.arrival.min}-${LIMITS.arrival.max}.`,
+      `<input type="number" class="inp-num inp-arrival" min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="${proc.arrivalTime}">`,
+      'inp-field-cell--arrival'
+    )}
+    ${_fieldCell(
+      'Rafaga',
+      `Tiempo total de CPU. Si tiene threads, se calcula como suma de rafagas. Rango: ${LIMITS.burst.min}-${LIMITS.burst.max}.`,
+      `<input type="number" class="inp-num inp-burst${hasThreads ? ' inp-readonly' : ''}" min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${proc.burstTime}"${hasThreads ? ' readonly' : ''}>`,
+      'inp-field-cell--burst'
+    )}
+    ${_fieldCell(
+      'Prioridad',
+      `Menor numero = mayor prioridad. Usado por Priority, MLQ y MLFQ. Rango: ${LIMITS.priority.min}-${LIMITS.priority.max}.`,
+      `<input type="number" class="inp-num inp-priority" min="${LIMITS.priority.min}" max="${LIMITS.priority.max}" value="${proc.priority}">`,
+      'inp-field-cell--priority'
+    )}
+    ${_fieldCell(
+      'Pag. compartidas',
+      `Paginas compartidas por todos los threads. Total = sharedPages + suma(stackPages). Rango: ${LIMITS.shared.min}-${LIMITS.shared.max}.`,
+      `<input type="number" class="inp-num inp-shared" min="${LIMITS.shared.min}" max="${LIMITS.shared.max}" value="${proc.sharedPages}">`,
+      'inp-field-cell--shared'
+    )}
+    <td class="inp-thread-cell">
+      <div class="inp-field">
+        <span class="inp-field-top">Threads ${_helpHint(`Desglosa la rafaga en threads independientes. Maximo ${LIMITS.threads.max} por proceso.`)}</span>
+        <div class="inp-thread-actions">
+          <button type="button" class="inp-btn-sm inp-toggle-threads" data-pid="${pid}"${hasThreads ? '' : ' hidden'}>${toggleText}</button>
+          <button type="button" class="inp-btn-sm inp-add-thread" data-pid="${pid}">+ Thread</button>
+        </div>
+      </div>
+    </td>
+    <td class="inp-action-cell">
+      <span class="inp-field-top">Acciones ${_helpHint('Fork duplica el proceso y activa paginas Copy-on-Write para revisarlas en Memoria.', 'left')}</span>
+      <div class="inp-row-actions">
+        <button type="button" class="inp-btn-sm inp-fork-proc" data-pid="${pid}" title="Simular fork()">Fork()</button>
+        <button type="button" class="inp-btn-sm inp-btn-danger inp-del-proc" data-pid="${pid}" title="Eliminar proceso">×</button>
+      </div>
+    </td>
+  `;
+}
+
+function _threadCells(localTid, arrival, burst, stackPages) {
+  return `
+    <span class="inp-thread-label">T${localTid}</span>
+    <label class="inp-thread-field">
+      <span>Llegada ${_helpHint(`Tick de llegada del thread. Debe ser >= llegada del proceso.`)}</span>
+      <input type="number" class="inp-num inp-t-arrival" min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="${arrival}" title="Thread arrival">
+    </label>
+    <label class="inp-thread-field">
+      <span>Rafaga ${_helpHint(`CPU requerida por este thread. Rango: ${LIMITS.burst.min}-${LIMITS.burst.max}.`)}</span>
+      <input type="number" class="inp-num inp-t-burst" min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${burst}" title="Thread burst">
+    </label>
+    <label class="inp-thread-field">
+      <span>Stack ${_helpHint(`Paginas privadas del stack del thread. Rango: ${LIMITS.stackPages.min}-${LIMITS.stackPages.max}.`)}</span>
+      <input type="number" class="inp-num inp-t-stack" min="${LIMITS.stackPages.min}" max="${LIMITS.stackPages.max}" value="${stackPages}" title="Stack pages">
+    </label>
+    <button type="button" class="inp-btn-sm inp-btn-danger inp-del-thread" title="Eliminar thread">×</button>
+  `;
+}
 
 export function initInputScreen() {
   const root = document.querySelector('[data-screen="input"]');
@@ -105,24 +335,44 @@ export function initInputScreen() {
 
       <div class="inp-toolbar">
         <button id="inp-add-process" class="inp-btn">+ Agregar proceso</button>
-        <label class="inp-btn" for="inp-file-upload" style="cursor:pointer">📂 Subir .txt</label>
+        <label class="inp-btn" for="inp-file-upload" style="cursor:pointer">Subir .txt</label>
         <label class="inp-btn" id="inp-load-another-file" for="inp-file-upload" style="cursor:pointer" hidden>Cargar otro archivo</label>
         <input type="file" id="inp-file-upload" accept=".txt,.csv" style="display:none">
-        <button id="inp-load-example" class="inp-btn">Cargar ejemplo</button>
         <button id="inp-clear-all" class="inp-btn inp-btn-outline-danger">Limpiar todo</button>
+      </div>
+      <div class="inp-examples">
+        <div class="inp-examples-head">
+          <div>
+            <div class="inp-examples-title">Ejemplos de carga</div>
+            <div class="inp-examples-desc">Escenarios listos para probar procesos, threads, fork(), COW y paginacion.</div>
+          </div>
+          ${_helpHint('Cada ejemplo reemplaza la captura actual y ajusta memoria con valores validos.', 'left')}
+        </div>
+        <div class="inp-example-grid">
+          ${_renderExampleCards()}
+        </div>
       </div>
       <div id="inp-file-summary" class="inp-file-summary" hidden></div>
       <div id="inp-file-error" class="inp-error" hidden></div>
-      <table class="inp-table" id="inp-process-table">
+      <div class="concept-panel">
+        <div class="concept-panel-title">Fork y Copy-on-Write</div>
+        <div class="concept-panel-grid">
+          <div><b>Fork()</b> duplica un proceso desde la fila seleccionada y crea un hijo schedulable.</div>
+          <div><b>COW</b> hace que padre e hijo compartan paginas al inicio; la copia privada aparece hasta escribir en Memoria.</div>
+          <div><b>Flujo</b>: presiona <span class="concept-kbd">Fork()</span>, luego <span class="concept-kbd">Ejecutar simulacion</span> y revisa la pantalla Memoria.</div>
+        </div>
+      </div>
+      <div id="inp-fork-summary" class="fork-summary" hidden></div>
+      <table class="inp-table inp-process-list" id="inp-process-table">
         <thead>
           <tr>
-            <th>PID <span class="help-hint" tabindex="0" data-tooltip="Identificador único del proceso. Se asigna automáticamente.">?</span></th>
-            <th>Llegada <span class="help-hint" tabindex="0" data-tooltip="Instante en que el proceso entra al sistema. Tick ≥ 0. Rango: ${LIMITS.arrival.min}–${LIMITS.arrival.max}.">?</span></th>
-            <th>Ráfaga <span class="help-hint" tabindex="0" data-tooltip="Tiempo total de CPU que requiere el proceso (en ticks). Si tiene threads, se calcula como la suma de sus ráfagas. Rango: ${LIMITS.burst.min}–${LIMITS.burst.max}.">?</span></th>
-            <th>Prioridad <span class="help-hint" tabindex="0" data-tooltip="Menor número = mayor prioridad (1 = top). Usado por los algoritmos Priority, MLQ y MLFQ. Rango: ${LIMITS.priority.min}–${LIMITS.priority.max}.">?</span></th>
-            <th>Pág. compartidas <span class="help-hint" tabindex="0" data-tooltip="Páginas de código y datos compartidas por todos los threads del proceso. El total de páginas será sharedPages + suma(stackPages). Rango: ${LIMITS.shared.min}–${LIMITS.shared.max}.">?</span></th>
-            <th>Threads <span class="help-hint" tabindex="0" data-tooltip="Opcional: desglosa la ráfaga del proceso en threads independientes. Cada uno con su propio arrival y stackPages. Máximo ${LIMITS.threads.max} por proceso.">?</span></th>
-            <th></th>
+            <th>PID</th>
+            <th>Llegada</th>
+            <th>Ráfaga</th>
+            <th>Prioridad</th>
+            <th>Pág. compartidas</th>
+            <th>Threads</th>
+            <th>Memoria</th>
           </tr>
         </thead>
         <tbody id="inp-tbody"></tbody>
@@ -130,24 +380,38 @@ export function initInputScreen() {
       <div id="inp-proc-errors" class="inp-error" hidden></div>
     </section>
 
-    <section class="inp-section">
-      <h3>Configuración de memoria</h3>
-      <div class="inp-mem-row">
-        <label class="inp-mem-label">
-          <span class="field-label">Memoria total (KB)</span>
-          <input type="number" id="inp-mem-size" class="inp-num"
-            min="${LIMITS.totalMem.min}" max="${LIMITS.totalMem.max}" value="256">
-          <span class="field-help">Rango: ${LIMITS.totalMem.min}–${LIMITS.totalMem.max} KB</span>
-        </label>
-        <label class="inp-mem-label">
-          <span class="field-label">Tamaño de página (KB)</span>
-          <input type="number" id="inp-page-size" class="inp-num"
-            min="${LIMITS.pageSize.min}" max="${LIMITS.pageSize.max}" value="32">
-          <span class="field-help">Rango: ${LIMITS.pageSize.min}–${LIMITS.pageSize.max} KB</span>
-        </label>
-        <div class="field-stack">
-          <span class="field-label">Marcos resultantes</span>
-          <span id="inp-frames-display" class="inp-frames-display">Frames: 8</span>
+    <section class="inp-section inp-memory-section">
+      <div class="inp-section-header">
+        <h3>Configuración de memoria</h3>
+        <span class="inp-memory-validity">Solo combinaciones divisibles y dentro de rango</span>
+      </div>
+      <div class="inp-memory-grid">
+        <div class="inp-memory-stepper">
+          <div class="inp-memory-label">
+            <span>Memoria total (KB) ${_helpHint(`Memoria fisica disponible. Valores validos entre ${LIMITS.totalMem.min} y ${LIMITS.totalMem.max} KB.`)}</span>
+            <span class="field-help" id="inp-mem-size-help">Paso valido actual</span>
+          </div>
+          <div class="inp-stepper">
+            <button type="button" class="inp-step-btn" data-memory-step="total" data-dir="-1" aria-label="Memoria anterior">−</button>
+            <input type="text" id="inp-mem-size" class="inp-stepper-value" value="256" readonly aria-label="Memoria total en KB">
+            <button type="button" class="inp-step-btn" data-memory-step="total" data-dir="1" aria-label="Memoria siguiente">+</button>
+          </div>
+        </div>
+        <div class="inp-memory-stepper">
+          <div class="inp-memory-label">
+            <span>Tamaño de página (KB) ${_helpHint(`Tamano de cada pagina/marco. Solo se muestran tamanos que dividen la memoria total.`)}</span>
+            <span class="field-help" id="inp-page-size-help">Paso valido actual</span>
+          </div>
+          <div class="inp-stepper">
+            <button type="button" class="inp-step-btn" data-memory-step="page" data-dir="-1" aria-label="Pagina anterior">−</button>
+            <input type="text" id="inp-page-size" class="inp-stepper-value" value="32" readonly aria-label="Tamano de pagina en KB">
+            <button type="button" class="inp-step-btn" data-memory-step="page" data-dir="1" aria-label="Pagina siguiente">+</button>
+          </div>
+        </div>
+        <div class="inp-frames-card">
+          <span class="field-label">Frames generados</span>
+          <span id="inp-frames-display" class="inp-frames-display">8 frames</span>
+          <span id="inp-frames-breakdown" class="inp-frames-breakdown">256 KB / 32 KB por frame</span>
         </div>
       </div>
       <div id="inp-mem-error" class="inp-error" hidden></div>
@@ -165,8 +429,10 @@ export function initInputScreen() {
   document.getElementById('inp-add-process').addEventListener('click', _addProcessRow);
   document.getElementById('inp-file-upload').addEventListener('change', _handleFileUpload);
   document.getElementById('inp-clear-all').addEventListener('click', _clearAll);
-  document.getElementById('inp-load-example').addEventListener('click', _loadExample);
   document.getElementById('inp-run-btn').addEventListener('click', _handleRunSimulation);
+  root.querySelectorAll('[data-example-id]').forEach(button => {
+    button.addEventListener('click', () => _loadExample(button.dataset.exampleId));
+  });
 
   document.getElementById('inp-help-toggle').addEventListener('click', () => {
     const p = document.getElementById('inp-help-panel');
@@ -177,8 +443,9 @@ export function initInputScreen() {
   document.getElementById('inp-download-template-9')
     .addEventListener('click', () => _downloadTemplate(9));
 
-  document.getElementById('inp-mem-size').addEventListener('input', _updateFramesDisplay);
-  document.getElementById('inp-page-size').addEventListener('input', _updateFramesDisplay);
+  root.querySelectorAll('[data-memory-step]').forEach(button => {
+    button.addEventListener('click', () => _stepMemoryValue(button.dataset.memoryStep, Number(button.dataset.dir)));
+  });
 
   // Hook hero buttons (from the home screen)
   document.getElementById('hero-start')?.addEventListener('click', () => navigateTo('input'));
@@ -188,6 +455,7 @@ export function initInputScreen() {
   });
 
   _addProcessRow();
+  _setMemoryConfig(256, 32);
 }
 
 function _ensureForkStyles() {
@@ -287,27 +555,14 @@ function _addProcessRow() {
   const tr = document.createElement('tr');
   tr.className = 'inp-proc-row';
   tr.dataset.pid = pid;
-  tr.innerHTML = `
-    <td class="inp-pid-cell">P${pid}</td>
-    <td><input type="number" class="inp-num inp-arrival"
-        min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="0"></td>
-    <td><input type="number" class="inp-num inp-burst"
-        min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="5"></td>
-    <td><input type="number" class="inp-num inp-priority"
-        min="${LIMITS.priority.min}" max="${LIMITS.priority.max}" value="1"></td>
-    <td><input type="number" class="inp-num inp-shared"
-        min="${LIMITS.shared.min}" max="${LIMITS.shared.max}" value="1"></td>
-    <td class="inp-thread-cell">
-      <button class="inp-btn-sm inp-toggle-threads" data-pid="${pid}" hidden>▼ 0 threads</button>
-      <button class="inp-btn-sm inp-add-thread" data-pid="${pid}">+ Thread</button>
-    </td>
-    <td>
-      <div class="inp-row-actions">
-        <button class="inp-btn-sm inp-fork-proc" data-pid="${pid}" title="Simular fork()">Fork</button>
-        <button class="inp-btn-sm inp-btn-danger inp-del-proc" data-pid="${pid}" title="Eliminar proceso">×</button>
-      </div>
-    </td>
-  `;
+  tr.innerHTML = _processCells({
+    pid,
+    arrivalTime: 0,
+    burstTime: 5,
+    priority: 1,
+    sharedPages: 1,
+    threads: [],
+  });
   tbody.appendChild(tr);
 
   const containerTr = _makeThreadContainer(pid);
@@ -334,7 +589,8 @@ function _makeThreadContainer(pid) {
   tr.innerHTML = `
     <td colspan="7" class="inp-thread-td">
       <div class="inp-thread-header">
-        <span>Thread</span><span>Llegada</span><span>Ráfaga</span><span>Stack pages</span><span></span>
+        <span>Threads del proceso</span>
+        <span>Los campos de cada thread actualizan la rafaga total del proceso.</span>
       </div>
       <div class="inp-thread-list" data-pid="${pid}"></div>
     </td>
@@ -348,6 +604,7 @@ function _deleteProcess(pid) {
   _procMeta.delete(pid);
   _forkMetaByPid.delete(pid);
   _updateLoadedFilesUI();
+  _renderForkSummary();
 }
 
 function _clearAll() {
@@ -356,11 +613,13 @@ function _clearAll() {
   _procMeta.clear();
   _forkMetaByPid.clear();
   _loadedFileCount = 0;
+  _nextPid = 1;
   document.getElementById('inp-proc-errors').hidden = true;
   document.getElementById('inp-file-error').hidden = true;
   document.getElementById('inp-file-error').innerHTML = '';
   _updateLoadedFilesUI(0);
   _addProcessRow();
+  _renderForkSummary();
   toast('Procesos limpiados.', 'info', 1800);
 }
 
@@ -436,16 +695,7 @@ function _addThreadRow(pid) {
   div.className = 'inp-thread-row';
   div.dataset.pid      = pid;
   div.dataset.localTid = localTid;
-  div.innerHTML = `
-    <span class="inp-thread-label">T${localTid}</span>
-    <input type="number" class="inp-num inp-t-arrival"
-      min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="${procArr}" title="Thread arrival">
-    <input type="number" class="inp-num inp-t-burst"
-      min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${defBurst}" title="Thread burst">
-    <input type="number" class="inp-num inp-t-stack"
-      min="${LIMITS.stackPages.min}" max="${LIMITS.stackPages.max}" value="1" title="Stack pages">
-    <button class="inp-btn-sm inp-btn-danger inp-del-thread" title="Eliminar thread">×</button>
-  `;
+  div.innerHTML = _threadCells(localTid, procArr, defBurst, 1);
   threadList.appendChild(div);
 
   div.querySelector('.inp-del-thread').addEventListener('click', () => {
@@ -575,6 +825,42 @@ function _makePidCell(proc) {
   );
 }
 
+function _renderForkSummary() {
+  const summary = document.getElementById('inp-fork-summary');
+  if (!summary) return;
+
+  const forks = [..._forkMetaByPid.entries()]
+    .filter(([, meta]) => meta.isForkChild && meta.forkParentPid !== null && meta.forkParentPid !== undefined)
+    .sort(([leftPid], [rightPid]) => leftPid - rightPid);
+
+  if (forks.length === 0) {
+    summary.hidden = true;
+    summary.innerHTML = '';
+    return;
+  }
+
+  const rows = forks.map(([childPid, meta]) => {
+    const childLabel = meta.forkLabel || `P${childPid}`;
+    const parentMeta = _forkMetaByPid.get(meta.forkParentPid);
+    const parentLabel = parentMeta?.forkLabel || `P${meta.forkParentPid}`;
+    const cowCount = meta.memory?.cowPages?.length || 0;
+    return (
+      `<span class="fork-summary-row">` +
+      `<span class="fork-chip fork-chip--parent">${parentLabel}</span>` +
+      `<span class="fork-arrow">-&gt;</span>` +
+      `<span class="fork-chip fork-chip--child">${childLabel}</span>` +
+      `<span class="fork-summary-note">PID ${childPid}, ${cowCount} pagina${cowCount !== 1 ? 's' : ''} COW compartida${cowCount !== 1 ? 's' : ''}</span>` +
+      `</span>`
+    );
+  }).join('');
+
+  summary.hidden = false;
+  summary.innerHTML =
+    `<div class="fork-summary-title">Forks activos</div>` +
+    `<div class="fork-summary-list">${rows}</div>` +
+    `<div class="fork-summary-help">El hijo entra al scheduler como proceso normal; la relacion padre/hijo y COW se ve con detalle en Memoria.</div>`;
+}
+
 function _insertProcessFromModel(proc, { showThreads = false, afterNode = null } = {}) {
   const tbody = document.getElementById('inp-tbody');
   const hasThreads = showThreads && proc.threads.length > 0;
@@ -586,27 +872,7 @@ function _insertProcessFromModel(proc, { showThreads = false, afterNode = null }
   if (proc.forkParentPid !== undefined && proc.forkParentPid !== null) {
     tr.dataset.forkParentPid = proc.forkParentPid;
   }
-  tr.innerHTML = `
-    <td class="inp-pid-cell">${_makePidCell(proc)}</td>
-    <td><input type="number" class="inp-num inp-arrival"
-        min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="${proc.arrivalTime}"></td>
-    <td><input type="number" class="inp-num inp-burst${hasThreads ? ' inp-readonly' : ''}"
-        min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${proc.burstTime}"${hasThreads ? ' readonly' : ''}></td>
-    <td><input type="number" class="inp-num inp-priority"
-        min="${LIMITS.priority.min}" max="${LIMITS.priority.max}" value="${proc.priority}"></td>
-    <td><input type="number" class="inp-num inp-shared"
-        min="${LIMITS.shared.min}" max="${LIMITS.shared.max}" value="${proc.sharedPages}"></td>
-    <td class="inp-thread-cell">
-      <button class="inp-btn-sm inp-toggle-threads" data-pid="${proc.pid}"${hasThreads ? '' : ' hidden'}>â–¼ ${proc.threads.length} thread${proc.threads.length !== 1 ? 's' : ''}</button>
-      <button class="inp-btn-sm inp-add-thread" data-pid="${proc.pid}">+ Thread</button>
-    </td>
-    <td>
-      <div class="inp-row-actions">
-        <button class="inp-btn-sm inp-fork-proc" data-pid="${proc.pid}" title="Simular fork()">Fork</button>
-        <button class="inp-btn-sm inp-btn-danger inp-del-proc" data-pid="${proc.pid}" title="Eliminar proceso">×</button>
-      </div>
-    </td>
-  `;
+  tr.innerHTML = _processCells(proc, { hasThreads, pidCell: _makePidCell(proc) });
 
   const containerTr = _makeThreadContainer(proc.pid);
   containerTr.hidden = !hasThreads;
@@ -637,16 +903,7 @@ function _insertProcessFromModel(proc, { showThreads = false, afterNode = null }
       div.className = 'inp-thread-row';
       div.dataset.pid = proc.pid;
       div.dataset.localTid = localTid;
-      div.innerHTML = `
-        <span class="inp-thread-label">T${localTid}</span>
-        <input type="number" class="inp-num inp-t-arrival"
-          min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="${thread.arrivalTime}" title="Thread arrival">
-        <input type="number" class="inp-num inp-t-burst"
-          min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${thread.burstTime}" title="Thread burst">
-        <input type="number" class="inp-num inp-t-stack"
-          min="${LIMITS.stackPages.min}" max="${LIMITS.stackPages.max}" value="${thread.stackPages}" title="Stack pages">
-        <button class="inp-btn-sm inp-btn-danger inp-del-thread" title="Eliminar thread">×</button>
-      `;
+      div.innerHTML = _threadCells(localTid, thread.arrivalTime, thread.burstTime, thread.stackPages);
       threadList.appendChild(div);
 
       div.querySelector('.inp-del-thread').addEventListener('click', () => {
@@ -673,7 +930,7 @@ function _parseCurrentProcessesForFork() {
   return processes;
 }
 
-function _forkProcess(parentPid) {
+function _forkProcess(parentPid, { silent = false } = {}) {
   const procCount = document.querySelectorAll('.inp-proc-row').length;
   if (procCount >= LIMITS.processes.max) {
     toast(`Máximo ${LIMITS.processes.max} procesos por simulación.`, 'warn');
@@ -692,10 +949,102 @@ function _forkProcess(parentPid) {
       afterNode,
     });
     _nextPid = Math.max(_nextPid, child.pid + 1);
-    toast(`${child.forkLabel || `P${child.pid}`} creado por fork() de P${parentPid}.`, 'ok');
+    _renderForkSummary();
+    if (!silent) toast(`${child.forkLabel || `P${child.pid}`} creado por fork() de P${parentPid}.`, 'ok');
   } catch (error) {
     toast(error.message || 'No se pudo simular fork().', 'err');
   }
+}
+
+function _validPageValues(totalMemory) {
+  const maxPage = Math.min(LIMITS.pageSize.max, totalMemory);
+  const values = [];
+  for (let value = LIMITS.pageSize.min; value <= maxPage; value += 1) {
+    if (totalMemory % value === 0) values.push(value);
+  }
+  return values;
+}
+
+function _validTotalValues(pageSize) {
+  const step = Math.max(LIMITS.pageSize.min, pageSize);
+  const first = Math.ceil(LIMITS.totalMem.min / step) * step;
+  const values = [];
+  for (let value = first; value <= LIMITS.totalMem.max; value += step) {
+    values.push(value);
+  }
+  return values;
+}
+
+function _nearestOption(options, value) {
+  if (!options.length) return value;
+  return options.reduce((best, option) => (
+    Math.abs(option - value) < Math.abs(best - value) ? option : best
+  ), options[0]);
+}
+
+function _optionStep(options, value, dir) {
+  const currentIndex = options.indexOf(value);
+  const baseIndex = currentIndex === -1 ? options.indexOf(_nearestOption(options, value)) : currentIndex;
+  const nextIndex = Math.max(0, Math.min(options.length - 1, baseIndex + dir));
+  return options[nextIndex];
+}
+
+function _setStepperDisabled(kind, value, options) {
+  document.querySelectorAll(`[data-memory-step="${kind}"]`).forEach(button => {
+    const dir = Number(button.dataset.dir);
+    button.disabled = dir < 0 ? value <= options[0] : value >= options[options.length - 1];
+  });
+}
+
+function _setMemoryConfig(totalMemory, pageSize) {
+  const requestedPage = Math.max(
+    LIMITS.pageSize.min,
+    Math.min(LIMITS.pageSize.max, Math.round(Number(pageSize) || 32))
+  );
+  const requestedTotal = Math.max(
+    LIMITS.totalMem.min,
+    Math.min(LIMITS.totalMem.max, Math.round(Number(totalMemory) || 256))
+  );
+
+  const validTotalsForRequestedPage = _validTotalValues(requestedPage);
+  const total = validTotalsForRequestedPage.includes(requestedTotal)
+    ? requestedTotal
+    : _nearestOption(validTotalsForRequestedPage, requestedTotal);
+  const validPages = _validPageValues(total);
+  const page = validPages.includes(requestedPage) ? requestedPage : _nearestOption(validPages, requestedPage);
+  const validTotals = _validTotalValues(page);
+
+  const memInput = document.getElementById('inp-mem-size');
+  const pageInput = document.getElementById('inp-page-size');
+  if (!memInput || !pageInput) return;
+
+  memInput.value = String(total);
+  pageInput.value = String(page);
+
+  const memHelp = document.getElementById('inp-mem-size-help');
+  const pageHelp = document.getElementById('inp-page-size-help');
+  if (memHelp) memHelp.textContent = `${validTotals.length} valores validos con pagina de ${page} KB`;
+  if (pageHelp) pageHelp.textContent = `${validPages.length} tamanos validos para ${total} KB`;
+
+  _setStepperDisabled('total', total, validTotals);
+  _setStepperDisabled('page', page, validPages);
+  _updateFramesDisplay();
+}
+
+function _stepMemoryValue(kind, dir) {
+  const total = parseInt(document.getElementById('inp-mem-size').value, 10);
+  const page = parseInt(document.getElementById('inp-page-size').value, 10);
+
+  if (kind === 'total') {
+    const validTotals = _validTotalValues(page);
+    const nextTotal = _optionStep(validTotals, total, dir);
+    _setMemoryConfig(nextTotal, page);
+    return;
+  }
+
+  const validPages = _validPageValues(total);
+  const nextPage = _optionStep(validPages, page, dir);
+  _setMemoryConfig(total, nextPage);
 }
 
 function _updateFramesDisplay() {
@@ -704,18 +1053,21 @@ function _updateFramesDisplay() {
   const memSize  = parseInt(memSizeInput.value);
   const pageSize = parseInt(pageSizeInput.value);
   const display  = document.getElementById('inp-frames-display');
+  const breakdown = document.getElementById('inp-frames-breakdown');
   const errEl    = document.getElementById('inp-mem-error');
 
   errEl.hidden = true;
 
   if (!memSize || !pageSize || pageSize <= 0) {
     display.textContent = 'Frames: —';
+    if (breakdown) breakdown.textContent = 'Selecciona una combinacion valida';
     display.className   = 'inp-frames-display';
     return;
   }
 
   if (memSize < LIMITS.totalMem.min || memSize > LIMITS.totalMem.max) {
     display.textContent = 'Frames: — (fuera de rango)';
+    if (breakdown) breakdown.textContent = 'Memoria fuera de rango';
     display.className   = 'inp-frames-display inp-frames-error';
     errEl.textContent   = `Memoria fuera de rango (${LIMITS.totalMem.min}–${LIMITS.totalMem.max} KB).`;
     errEl.hidden        = false;
@@ -724,6 +1076,7 @@ function _updateFramesDisplay() {
 
   if (pageSize < LIMITS.pageSize.min || pageSize > LIMITS.pageSize.max) {
     display.textContent = 'Frames: — (fuera de rango)';
+    if (breakdown) breakdown.textContent = 'Pagina fuera de rango';
     display.className   = 'inp-frames-display inp-frames-error';
     errEl.textContent   = `Tamaño de página fuera de rango (${LIMITS.pageSize.min}–${LIMITS.pageSize.max} KB).`;
     errEl.hidden        = false;
@@ -732,12 +1085,14 @@ function _updateFramesDisplay() {
 
   if (memSize % pageSize !== 0) {
     display.textContent = 'Frames: — (no divisible)';
+    if (breakdown) breakdown.textContent = `${memSize} KB no divide en paginas de ${pageSize} KB`;
     display.className   = 'inp-frames-display inp-frames-error';
     errEl.textContent   = 'La memoria total debe ser divisible entre el tamaño de página.';
     errEl.hidden        = false;
   } else {
     const frames = memSize / pageSize;
-    display.textContent = `${frames}`;
+    display.textContent = `${frames} frame${frames !== 1 ? 's' : ''}`;
+    if (breakdown) breakdown.textContent = `${memSize} KB / ${pageSize} KB por frame`;
     display.className   = 'inp-frames-display';
     if (frames > 256) {
       errEl.textContent = `Aviso: ${frames} marcos podrían ralentizar la visualización. Reduce la memoria o aumenta la página.`;
@@ -824,6 +1179,7 @@ function _handleFileUpload(e) {
         document.getElementById('inp-tbody').innerHTML = '';
         _procMeta.clear();
         _forkMetaByPid.clear();
+        _renderForkSummary();
       }
 
       const processes = _prepareImportedProcesses(parsedProcesses, _loadedFileCount > 0);
@@ -867,27 +1223,7 @@ function _populateFromProcesses(processes, showThreads, { incremental = false, a
     const tr = document.createElement('tr');
     tr.className  = `inp-proc-row${animate ? ' process-row-entering' : ''}`;
     tr.dataset.pid = proc.pid;
-    tr.innerHTML = `
-      <td class="inp-pid-cell">P${proc.pid}</td>
-      <td><input type="number" class="inp-num inp-arrival"
-          min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="${proc.arrivalTime}"></td>
-      <td><input type="number" class="inp-num inp-burst${hasThreads ? ' inp-readonly' : ''}"
-          min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${proc.burstTime}"${hasThreads ? ' readonly' : ''}></td>
-      <td><input type="number" class="inp-num inp-priority"
-          min="${LIMITS.priority.min}" max="${LIMITS.priority.max}" value="${proc.priority}"></td>
-      <td><input type="number" class="inp-num inp-shared"
-          min="${LIMITS.shared.min}" max="${LIMITS.shared.max}" value="${proc.sharedPages}"></td>
-      <td class="inp-thread-cell">
-        <button class="inp-btn-sm inp-toggle-threads" data-pid="${proc.pid}"${hasThreads ? '' : ' hidden'}>▼ ${proc.threads.length} thread${proc.threads.length !== 1 ? 's' : ''}</button>
-        <button class="inp-btn-sm inp-add-thread" data-pid="${proc.pid}">+ Thread</button>
-      </td>
-      <td>
-        <div class="inp-row-actions">
-          <button class="inp-btn-sm inp-fork-proc" data-pid="${proc.pid}" title="Simular fork()">Fork</button>
-          <button class="inp-btn-sm inp-btn-danger inp-del-proc" data-pid="${proc.pid}" title="Eliminar proceso">×</button>
-        </div>
-      </td>
-    `;
+    tr.innerHTML = _processCells(proc, { hasThreads });
     tbody.appendChild(tr);
 
     const containerTr = _makeThreadContainer(proc.pid);
@@ -912,16 +1248,7 @@ function _populateFromProcesses(processes, showThreads, { incremental = false, a
         div.className        = 'inp-thread-row';
         div.dataset.pid      = proc.pid;
         div.dataset.localTid = localTid;
-        div.innerHTML = `
-          <span class="inp-thread-label">T${localTid}</span>
-          <input type="number" class="inp-num inp-t-arrival"
-            min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="${t.arrivalTime}" title="Thread arrival">
-          <input type="number" class="inp-num inp-t-burst"
-            min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${t.burstTime}"   title="Thread burst">
-          <input type="number" class="inp-num inp-t-stack"
-            min="${LIMITS.stackPages.min}" max="${LIMITS.stackPages.max}" value="${t.stackPages}"  title="Stack pages">
-          <button class="inp-btn-sm inp-btn-danger inp-del-thread" title="Eliminar thread">×</button>
-        `;
+        div.innerHTML = _threadCells(localTid, t.arrivalTime, t.burstTime, t.stackPages);
         threadList.appendChild(div);
 
         div.querySelector('.inp-del-thread').addEventListener('click', () => {
@@ -971,13 +1298,18 @@ function _downloadTemplate(cols) {
 
 // ─── Example loader ──────────────────────────────────────────────────────────
 
-function _loadExample() {
+function _exampleById(id) {
+  return EXAMPLE_PRESETS.find(preset => preset.id === id) || EXAMPLE_PRESETS[0];
+}
+
+function _cloneExampleProcesses(processes) {
+  return JSON.parse(JSON.stringify(processes));
+}
+
+function _loadExample(exampleId = 'basic') {
   _importRenderToken += 1;
-  const example = [
-    { pid: 1, arrivalTime: 0, burstTime: 5, priority: 2, sharedPages: 4, threads: [] },
-    { pid: 2, arrivalTime: 1, burstTime: 3, priority: 1, sharedPages: 3, threads: [] },
-    { pid: 3, arrivalTime: 2, burstTime: 7, priority: 3, sharedPages: 5, threads: [] },
-  ];
+  const preset = _exampleById(exampleId);
+  const example = _cloneExampleProcesses(preset.processes);
 
   document.getElementById('inp-tbody').innerHTML = '';
   _procMeta.clear();
@@ -986,14 +1318,18 @@ function _loadExample() {
   _updateLoadedFilesUI(0);
   document.getElementById('inp-file-error').hidden = true;
   document.getElementById('inp-file-error').innerHTML = '';
-  _nextPid = 4;
+  _nextPid = Math.max(...example.map(proc => proc.pid)) + 1;
 
-  _populateFromProcesses(example, false);
-  document.getElementById('inp-mem-size').value = '256';
-  document.getElementById('inp-page-size').value = '32';
-  _updateFramesDisplay();
+  _populateFromProcesses(example, preset.showThreads);
+  _setMemoryConfig(preset.memory.totalMemory, preset.memory.pageSize);
 
-  toast('Ejemplo cargado: 3 procesos, 256 KB / 32 KB página.', 'info');
+  for (const parentPid of preset.forks || []) {
+    _forkProcess(parentPid, { silent: true });
+  }
+
+  _renderForkSummary();
+
+  toast(`Ejemplo cargado: ${preset.title}.`, 'info');
 }
 
 // ─── Collect & run ────────────────────────────────────────────────────────────

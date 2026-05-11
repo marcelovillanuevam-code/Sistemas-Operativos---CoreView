@@ -65,6 +65,14 @@ function ensureCowStyles() {
       background: var(--bg-elevated);
     }
 
+    [data-screen="memory"] .mem-write-btn:disabled {
+      opacity: 0.72;
+      cursor: not-allowed;
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--state-blocked);
+      border-color: rgba(239, 68, 68, 0.28);
+    }
+
     [data-screen="memory"] .mem-fr-ver {
       font-size: 10px;
       color: rgba(255, 255, 255, 0.82);
@@ -204,12 +212,22 @@ export function initMemoryScreen() {
 
     <div id="mem-data-banner"></div>
     <div id="mem-warning"></div>
+    <div class="concept-panel">
+      <div class="concept-panel-title">Que estas viendo</div>
+      <div class="concept-panel-grid">
+        <div><b>Marco</b>: espacio fisico de memoria. Cada bloque del grid es un frame real disponible.</div>
+        <div><b>Pagina</b>: porcion logica de un proceso cargada dentro de un marco fisico.</div>
+        <div><b>COW por fork()</b>: si ves candado, padre e hijo comparten ese marco; al escribir se materializa una copia privada.</div>
+      </div>
+    </div>
+    <div id="mem-fork-summary" class="fork-summary" hidden></div>
     <div id="mem-container"></div>
   `;
 
   const container = root.querySelector('#mem-container');
   const bannerEl = root.querySelector('#mem-data-banner');
   const warnEl = root.querySelector('#mem-warning');
+  const forkSummaryEl = root.querySelector('#mem-fork-summary');
 
   function renderDataBanner(usingDefaults, config, processes) {
     const cowCount = processes.reduce((sum, process) =>
@@ -239,6 +257,11 @@ export function initMemoryScreen() {
   }
 
   function renderCapacityWarning(memState, config) {
+    const freeFrames = memState.frames.filter(frame => frame.ownerPid === null).length;
+    const hasCowPages = memState.frames.some(frame => frame.cow?.isCow);
+    const cowNoFreeFrame = hasCowPages && freeFrames === 0;
+    const recommendedTotal = Math.max(memState.requiredPhysicalPages + 1, config.numFrames + 1) * config.pageSize;
+
     if (memState.requiredPhysicalPages > config.numFrames) {
       const overflow = memState.requiredPhysicalPages - config.numFrames;
       warnEl.innerHTML =
@@ -246,10 +269,72 @@ export function initMemoryScreen() {
         `  <span class="banner-icon">!</span>` +
         `  La asignacion fisica requiere <b>${memState.requiredPhysicalPages}</b> paginas pero solo hay ` +
         `  <b>${config.numFrames}</b> marcos disponibles (<b>${overflow}</b> paginas no caben).` +
+        (cowNoFreeFrame
+          ? ` Para demostrar una copia privada COW, vuelve a Entrada y sube Memoria total a <b>${recommendedTotal} KB</b> o mas.`
+          : '') +
+        `</div>`;
+    } else if (cowNoFreeFrame) {
+      warnEl.innerHTML =
+        `<div class="banner-info banner-warn">` +
+        `  <span class="banner-icon">!</span>` +
+        `  Hay paginas COW, pero <b>0 marcos libres</b>. Para pulsar Escribir y crear una copia privada, agrega al menos un marco libre en Entrada.` +
         `</div>`;
     } else {
       warnEl.innerHTML = '';
     }
+  }
+
+  function processLabel(process) {
+    if (!process) return '';
+    return process?.forkLabel || `P${process?.pid}`;
+  }
+
+  function buildPidLabels(processes) {
+    return new Map(processes.map(process => [process.pid, processLabel(process)]));
+  }
+
+  function renderForkSummary(processes, usingDefaults, memState) {
+    if (!forkSummaryEl) return;
+
+    const children = usingDefaults
+      ? []
+      : processes
+        .filter(process => process.isForkChild && process.forkParentPid !== null && process.forkParentPid !== undefined)
+        .sort((left, right) => left.pid - right.pid);
+
+    if (children.length === 0) {
+      forkSummaryEl.hidden = true;
+      forkSummaryEl.innerHTML = '';
+      return;
+    }
+
+    const rows = children.map(child => {
+      const parent = processes.find(process => process.pid === child.forkParentPid);
+      const sharedPages = child.memory?.cowPages?.length || 0;
+      const privatePages = child.memory?.materializedCowPages?.length || 0;
+      return (
+        `<span class="fork-summary-row">` +
+        `<span class="fork-chip fork-chip--parent">${processLabel(parent) || `P${child.forkParentPid}`}</span>` +
+        `<span class="fork-arrow">-&gt;</span>` +
+        `<span class="fork-chip fork-chip--child">${processLabel(child)}</span>` +
+        `<span class="fork-summary-note">${sharedPages} COW compartida${sharedPages !== 1 ? 's' : ''}, ${privatePages} copia${privatePages !== 1 ? 's' : ''} privada${privatePages !== 1 ? 's' : ''}</span>` +
+        `</span>`
+      );
+    }).join('');
+    const freeFrames = memState
+      ? memState.frames.filter(frame => frame.ownerPid === null).length
+      : 0;
+    const hasCowPages = children.some(child => (child.memory?.cowPages?.length || 0) > 0);
+    const cowBlockedNote = hasCowPages && freeFrames === 0
+      ? `<div class="fork-summary-help fork-summary-help--warn">Ahora hay 0 marcos libres; por eso la escritura COW queda bloqueada. Sube la memoria total para dejar al menos 1 marco libre.</div>`
+      : '';
+
+    forkSummaryEl.hidden = false;
+    forkSummaryEl.innerHTML =
+      `<div class="fork-summary-title">Relaciones fork() en memoria</div>` +
+      `<div class="fork-summary-list">${rows}</div>` +
+      `<div class="fork-summary-help">Los marcos con candado son paginas compartidas por Copy-on-Write; al pulsar Escribir se crea una copia privada si hay marcos libres.</div>` +
+      cowBlockedNote;
   }
 
   function activeData() {
@@ -272,7 +357,7 @@ export function initMemoryScreen() {
     const isCow = hasCowPage(processes, pid, pageNumber);
     const freeFrames = beforeState.frames.filter(frame => frame.ownerPid === null).length;
     if (isCow && freeFrames <= 0) {
-      toast('No hay marcos libres para duplicar la pagina COW.', 'err');
+      toast('No hay marcos libres para duplicar la pagina COW. Sube Memoria total en Entrada.', 'err');
       return;
     }
 
@@ -302,8 +387,11 @@ export function initMemoryScreen() {
 
     renderDataBanner(usingDefaults, config, processes);
     renderCapacityWarning(memState, config);
+    renderForkSummary(processes, usingDefaults, memState);
     renderMemoryGrid(container, memState, config, {
       highlight: _lastHighlight,
+      pidLabels: buildPidLabels(processes),
+      canMaterializeCow: memState.frames.some(frame => frame.ownerPid === null),
       onWritePage: handleWritePage,
     });
   }

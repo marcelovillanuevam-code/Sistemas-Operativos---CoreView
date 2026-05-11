@@ -33,7 +33,7 @@ export function renderReadyQueue(container, entry, labelMap, colorMap) {
     qRow.slot.appendChild(empty);
   } else {
     for (const entity of entry.readyQueue) {
-      const label = entity.label || labelMap.get(entity.tid) || `TID${entity.tid}`;
+      const label = labelMap.get(entity.tid) || entity.label || `TID${entity.tid}`;
       const color = colorMap.get(entity.tid) || '#888';
       const tip   = `${label} · rem: ${entity.remainingTime}`;
       qRow.slot.appendChild(_makeChip(label, color, false, tip));

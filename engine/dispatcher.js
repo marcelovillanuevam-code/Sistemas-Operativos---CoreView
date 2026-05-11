@@ -59,6 +59,15 @@ function makeWorkerUrl() {
   return new URL('./thread-worker.js', import.meta.url);
 }
 
+function workerDebugEnabled() {
+  return typeof window !== 'undefined';
+}
+
+function logWorkerDebug(message, data = {}) {
+  if (!workerDebugEnabled()) return;
+  console.info(`[CoreView Worker] ${message}`, data);
+}
+
 function cloneMetric(metric) {
   return metric ? { ...metric } : metric;
 }
@@ -672,7 +681,15 @@ export class Dispatcher {
 
   _createWorkerForThread(thread) {
     return new Promise((resolve, reject) => {
-      const worker = new Worker(makeWorkerUrl());
+      const workerName = `coreview-thread-T${thread.tid}`;
+      logWorkerDebug('create', {
+        worker: workerName,
+        tid: thread.tid,
+        pid: thread.pid,
+        burst: thread.burstTime,
+      });
+
+      const worker = new Worker(makeWorkerUrl(), { name: workerName });
       let ready = false;
 
       worker.onmessage = event => {
@@ -680,6 +697,11 @@ export class Dispatcher {
 
         if (message.type === 'ready' && message.tid === thread.tid) {
           ready = true;
+          logWorkerDebug('ready', {
+            worker: workerName,
+            tid: thread.tid,
+            pid: thread.pid,
+          });
           resolve();
           return;
         }
@@ -694,6 +716,11 @@ export class Dispatcher {
 
       worker.onerror = error => {
         const workerError = new Error(error.message || `Worker error for tid ${thread.tid}`);
+        logWorkerDebug('error', {
+          worker: workerName,
+          tid: thread.tid,
+          error: workerError.message,
+        });
         if (!ready) {
           reject(workerError);
           return;
@@ -734,6 +761,14 @@ export class Dispatcher {
   _handleThreadDone(message) {
     const tid = message.tid;
     if (this.finishedTids.has(tid)) return;
+
+    const thread = this.threadByTid.get(tid);
+    logWorkerDebug('done', {
+      worker: `coreview-thread-T${tid}`,
+      tid,
+      pid: thread?.pid,
+      executedSoFar: message.executedSoFar,
+    });
 
     const wasWaitingForWorker = this.waitingForWorkerTids.has(tid);
     this.finishedTids.add(tid);
@@ -897,6 +932,13 @@ export class Dispatcher {
     if (!worker) return;
 
     try {
+      if (message?.type === 'run' || message?.type === 'preempt') {
+        logWorkerDebug(message.type, {
+          worker: `coreview-thread-T${tid}`,
+          tid,
+          simTime: this.simTime,
+        });
+      }
       worker.postMessage(message);
     } catch (error) {
       this._handleError(error);
@@ -918,8 +960,12 @@ export class Dispatcher {
   }
 
   _terminateWorkers() {
-    for (const worker of this.workerPool.values()) {
+    for (const [tid, worker] of this.workerPool.entries()) {
       try {
+        logWorkerDebug('terminate', {
+          worker: `coreview-thread-T${tid}`,
+          tid,
+        });
         worker.postMessage({ type: 'terminate' });
       } catch (_) {
         // Worker may already be gone.

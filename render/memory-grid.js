@@ -11,12 +11,13 @@ function frameContainsPid(frame, pid) {
  * @param {HTMLElement} container
  * @param {import('../types.js').MemoryState} memoryState
  * @param {import('../types.js').MemoryConfig} config
- * @param {{ onWritePage?: Function, highlight?: { pid: number, pageNumber: number, kind: string } }} [options]
+ * @param {{ onWritePage?: Function, highlight?: { pid: number, pageNumber: number, kind: string }, pidLabels?: Map<number,string>, canMaterializeCow?: boolean }} [options]
  */
 export function renderMemoryGrid(container, memoryState, config, options = {}) {
   const { frames, internalFragmentation } = memoryState;
   const { pageSize, numFrames, totalMemory } = config;
-  const { onWritePage, highlight } = options;
+  const { onWritePage, highlight, pidLabels = new Map(), canMaterializeCow = true } = options;
+  const labelForPid = pid => pidLabels.get(pid) || `P${pid}`;
 
   const pids = [...new Set(
     frames
@@ -57,12 +58,13 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
     pidsList.className = 'mem-pid-list';
     for (const pid of pids) {
       const pageCount = frames.filter(frame => frameContainsPid(frame, pid)).length;
+      const label = labelForPid(pid);
       const pill = document.createElement('span');
       pill.className = 'mem-pid-pill';
-      pill.title = `P${pid} ocupa ${pageCount} marco(s) fisicos o COW`;
+      pill.title = `${label} ocupa ${pageCount} marco(s) fisicos o COW`;
       pill.innerHTML =
         `<span class="mem-pid-pill-swatch" style="background:${colorMap.get(pid)}"></span>` +
-        `P${pid} - ${pageCount} marco${pageCount !== 1 ? 's' : ''}`;
+        `${label} - ${pageCount} marco${pageCount !== 1 ? 's' : ''}`;
       pidsList.appendChild(pill);
     }
     container.appendChild(pidsList);
@@ -97,15 +99,19 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
 
       const sharedWith = frame.cow?.sharedWithPids || [];
       const displayPids = frame.cow?.isCow
-        ? [frame.ownerPid, ...sharedWith].sort((a, b) => a - b).map(pid => `P${pid}`).join('/')
-        : `P${frame.ownerPid}`;
+        ? [frame.ownerPid, ...sharedWith].sort((a, b) => a - b).map(labelForPid).join('/')
+        : labelForPid(frame.ownerPid);
       const cowTitle = frame.cow?.isCow
-        ? ` Pagina compartida COW con PID ${sharedWith.join(', ')}.`
+        ? ` Pagina compartida COW con ${sharedWith.map(labelForPid).join(', ')}.`
         : '';
       const writerPid = frame.cow?.isCow
         ? (sharedWith[0] ?? frame.ownerPid)
         : frame.ownerPid;
       const version = Number(frame.contentVersion || 0);
+      const cowWriteBlocked = frame.cow?.isCow && !canMaterializeCow;
+      const writeTitle = cowWriteBlocked
+        ? 'No hay marcos libres para crear una copia privada COW.'
+        : `Escribir en pagina ${frame.pageNumber}`;
 
       cell.title =
         `Marco ${frame.frameIndex} -> ${displayPids}, pagina ${frame.pageNumber}.` +
@@ -114,10 +120,10 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
       cell.innerHTML =
         `<span class="mem-fr-num">F${frame.frameIndex}</span>` +
         `<span class="mem-fr-pid">${displayPids}</span>` +
-        `<span class="mem-fr-pg">pag ${frame.pageNumber}</span>` +
+        `<span class="mem-fr-pg">pagina #${frame.pageNumber}</span>` +
         (version > 0 ? `<span class="mem-fr-ver">v${version}</span>` : '') +
         (frame.cow?.isCow ? `<span class="mem-fr-cow-lock" aria-label="COW lock">&#128274;</span>` : '') +
-        `<button class="mem-write-btn" type="button" data-pid="${writerPid}" data-page="${frame.pageNumber}">Write to page ${frame.pageNumber}</button>` +
+        `<button class="mem-write-btn" type="button" data-pid="${writerPid}" data-page="${frame.pageNumber}" title="${writeTitle}"${cowWriteBlocked ? ' disabled' : ''}>${cowWriteBlocked ? 'Sin marco' : 'Escribir'}</button>` +
         (isLast ? `<span class="mem-fr-frag-badge">frag</span>` : '');
     }
 

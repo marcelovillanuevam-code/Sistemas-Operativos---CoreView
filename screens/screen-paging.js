@@ -124,6 +124,14 @@ export function initPagingScreen() {
     </div>
 
     <div id="pg-algo-desc" class="sched-config-panel"></div>
+    <div class="concept-panel">
+      <div class="concept-panel-title">Que estas viendo</div>
+      <div class="concept-panel-grid">
+        <div><b>Cadena de referencias</b>: paginas solicitadas en orden. La pagina actual avanza con Play o Siguiente.</div>
+        <div><b>Marcos</b>: cupos fisicos disponibles. Si la pagina pedida ya esta cargada hay HIT.</div>
+        <div><b>Page fault</b>: la pagina no esta en memoria; el algoritmo decide que pagina cargar o reemplazar.</div>
+      </div>
+    </div>
 
     <div class="pg-config">
       <div class="pg-config-row">

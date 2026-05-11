@@ -90,8 +90,9 @@ function pickTimeStep(totalTime, chartWidth) {
  * @param {number} currentStep
  * @param {number} canvasWidth
  * @param {number} canvasHeight
+ * @param {{ labelMap?: Map<number, string> }} [options]
  */
-export function renderGanttChart(ctx, trace, currentStep, canvasWidth, canvasHeight) {
+export function renderGanttChart(ctx, trace, currentStep, canvasWidth, canvasHeight, options = {}) {
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
   const timeline = trace.timeline;
@@ -106,7 +107,7 @@ export function renderGanttChart(ctx, trace, currentStep, canvasWidth, canvasHei
   const chartH = canvasHeight - MARGIN.top - MARGIN.bottom;
   const pxPerTick = chartW / span;
 
-  const labelMap  = buildLabelMap(trace);
+  const labelMap  = options.labelMap || buildLabelMap(trace);
   const colorMap  = buildColorMap(trace);
   const blocks    = buildBlocks(timeline);
 
