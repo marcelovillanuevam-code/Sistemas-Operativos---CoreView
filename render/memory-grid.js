@@ -108,10 +108,14 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
         ? (sharedWith[0] ?? frame.ownerPid)
         : frame.ownerPid;
       const version = Number(frame.contentVersion || 0);
-      const cowWriteBlocked = frame.cow?.isCow && !canMaterializeCow;
+      const isCowFrame = Boolean(frame.cow?.isCow);
+      const cowWriteBlocked = isCowFrame && !canMaterializeCow;
       const writeTitle = cowWriteBlocked
         ? 'No hay frames libres para crear una copia privada COW.'
-        : `Escribir en página ${frame.pageNumber}`;
+        : isCowFrame
+          ? `Duplicar COW para página ${frame.pageNumber}`
+          : `Escribir en página privada ${frame.pageNumber}; no crea frame nuevo.`;
+      const writeLabel = cowWriteBlocked ? 'Sin frame' : (isCowFrame ? 'Duplicar' : 'Escribir');
 
       cell.title =
         `Frame ${frame.frameIndex} -> ${displayPids}, página ${frame.pageNumber}.` +
@@ -123,7 +127,7 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
         `<span class="mem-fr-pg">page #${frame.pageNumber}</span>` +
         (version > 0 ? `<span class="mem-fr-ver">v${version}</span>` : '') +
         (frame.cow?.isCow ? `<span class="mem-fr-cow-lock" aria-label="COW lock">&#128274;</span>` : '') +
-        `<button class="mem-write-btn" type="button" data-pid="${writerPid}" data-page="${frame.pageNumber}" title="${writeTitle}"${cowWriteBlocked ? ' disabled' : ''}>${cowWriteBlocked ? 'Sin frame' : 'Escribir'}</button>` +
+        `<button class="mem-write-btn" type="button" data-pid="${writerPid}" data-page="${frame.pageNumber}" title="${writeTitle}"${cowWriteBlocked ? ' disabled' : ''}>${writeLabel}</button>` +
         (isLast ? `<span class="mem-fr-frag-badge">frag</span>` : '');
     }
 

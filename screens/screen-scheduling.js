@@ -314,6 +314,12 @@ export function initSchedulingScreen() {
   let labelMap = null;
   let colorMap = null;
 
+  function _publishCurrentTrace() {
+    if (!currentTrace) return;
+    AppState.schedulingTrace = currentTrace;
+    AppState.currentAlgorithm = currentAlgo;
+  }
+
   function _showConfig(algo) {
     cfgRR.hidden   = algo !== 'RR';
     cfgMLQ.hidden  = algo !== 'MLQ';
@@ -390,8 +396,7 @@ export function initSchedulingScreen() {
     const key = _cacheKey(algo);
     currentTrace = _getCached(key, () => _computeTrace(algo));
     if (publish) {
-      AppState.schedulingTrace  = currentTrace;
-      AppState.currentAlgorithm = algo;
+      _publishCurrentTrace();
     }
 
     labelMap = _buildLabelMap(currentTrace);
@@ -475,7 +480,7 @@ export function initSchedulingScreen() {
 
   document.querySelector('[data-tab="scheduling"]')?.addEventListener('click', () => {
     _ensureFreshCache();
-    _run(currentAlgo, { publish: Boolean(AppState.schedulingTrace) });
+    _run(currentAlgo, { publish: true });
   });
 
   root.querySelector('[data-algo="FCFS"]').classList.add('active');

@@ -788,6 +788,16 @@ main {
   border-color: var(--accent);
 }
 
+.inp-num.inp-num--invalid {
+  border-color: var(--state-blocked);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.16);
+}
+
+.inp-num.inp-num--invalid:focus {
+  outline-color: rgba(239, 68, 68, 0.26);
+  border-color: var(--state-blocked);
+}
+
 .inp-num.inp-readonly {
   background: var(--bg-elevated);
   color: var(--text-tertiary);
@@ -3986,6 +3996,10 @@ a:hover {
   color: var(--text-tertiary);
   font-size: 13px;
   flex: 1;
+}
+
+.inp-run-bar-msg--error {
+  color: var(--state-blocked);
 }
 
 /* ─── Field stack / labels ───────────────────────────────────────────────── */

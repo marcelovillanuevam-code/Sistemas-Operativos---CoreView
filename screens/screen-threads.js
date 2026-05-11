@@ -607,6 +607,7 @@ export function initThreadsScreen() {
     _dispatcher = dispatcher;
     _activeTrace = dispatcher.trace;
     _lastExportNumCores = dispatcher.numCores;
+    AppState.schedulingTrace = _activeTrace;
     AppState.currentAlgorithm = getSelectedAlgorithm();
     resetMetrics();
 

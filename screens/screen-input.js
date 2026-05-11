@@ -30,6 +30,7 @@ const LIMITS = {
   processes:  { min: 1, max: 16 },
 };
 const IMPORT_ROW_DELAY_MS = 60;
+const VALIDATION_SUMMARY_LIMIT = 6;
 
 const EXAMPLE_PRESETS = [
   {
@@ -93,9 +94,9 @@ const EXAMPLE_PRESETS = [
     title: 'Fork + COW',
     meta: 'Padres, hijos y COW',
     description: 'Crea hijos con fork() para revisar Copy-on-Write en Memoria.',
-    memory: { totalMemory: 512, pageSize: 32 },
+    memory: { totalMemory: 640, pageSize: 32 },
     showThreads: true,
-    forks: [1, 2],
+    forks: [1, 2, 3],
     processes: [
       {
         pid: 1,
@@ -523,19 +524,124 @@ function _ensureForkStyles() {
   document.head.appendChild(style);
 }
 
-// ─── Bound clamp helper ──────────────────────────────────────────────────────
+// ─── Bound validation helper ─────────────────────────────────────────────────
+
+function _rangeText(bounds) {
+  return `${bounds.min}-${bounds.max}`;
+}
+
+function _inputLabel(input) {
+  if (input.classList.contains('inp-arrival')) return 'Llegada del proceso';
+  if (input.classList.contains('inp-burst')) return 'CPU burst del proceso';
+  if (input.classList.contains('inp-priority')) return 'Prioridad';
+  if (input.classList.contains('inp-shared')) return 'Shared pages';
+  if (input.classList.contains('inp-t-arrival')) return 'Llegada del thread';
+  if (input.classList.contains('inp-t-burst')) return 'CPU burst del thread';
+  if (input.classList.contains('inp-t-stack')) return 'Stack pages';
+  return 'Campo';
+}
+
+function _setInputInvalid(input, message) {
+  if (!input) return;
+  if (input.dataset.baseTitle === undefined) {
+    input.dataset.baseTitle = input.getAttribute('title') || '';
+  }
+  input.classList.add('inp-num--invalid');
+  input.setAttribute('aria-invalid', 'true');
+  input.setCustomValidity(message);
+  input.title = message;
+}
+
+function _clearInputInvalid(input) {
+  if (!input) return;
+  input.classList.remove('inp-num--invalid');
+  input.removeAttribute('aria-invalid');
+  input.setCustomValidity('');
+
+  const baseTitle = input.dataset.baseTitle || '';
+  if (baseTitle) input.title = baseTitle;
+  else input.removeAttribute('title');
+}
+
+function _validateBoundedInput(input, bounds) {
+  if (!input) {
+    return { valid: false, value: null, message: 'Campo faltante.' };
+  }
+
+  const label = _inputLabel(input);
+  const raw = String(input.value ?? '').trim();
+  let message = '';
+  let value = null;
+
+  if (raw === '') {
+    message = `${label}: campo obligatorio.`;
+  } else {
+    value = Number(raw);
+    if (!Number.isFinite(value) || !Number.isInteger(value)) {
+      message = `${label}: usa solo enteros.`;
+    } else if (value < bounds.min || value > bounds.max) {
+      message = `${label}: debe estar en el rango ${_rangeText(bounds)}.`;
+    }
+  }
+
+  if (message) {
+    _setInputInvalid(input, message);
+    return { valid: false, value, message };
+  }
+
+  _clearInputInvalid(input);
+  return { valid: true, value, message: '' };
+}
 
 function _clampInput(input, bounds) {
-  let v = parseInt(input.value, 10);
-  if (isNaN(v)) v = bounds.min;
+  let v = Number(String(input.value ?? '').trim());
+  if (!Number.isFinite(v)) v = bounds.min;
+  v = Math.trunc(v);
   if (v < bounds.min) v = bounds.min;
   if (v > bounds.max) v = bounds.max;
-  input.value = v;
+  input.value = String(v);
+  _validateBoundedInput(input, bounds);
   return v;
 }
 
+function _afterBoundedInputChanged(input) {
+  if (!input) return;
+
+  const threadRow = input.closest('.inp-thread-row');
+  if (threadRow && input.classList.contains('inp-t-burst')) {
+    const pid = Number(threadRow.dataset.pid);
+    if (Number.isFinite(pid)) {
+      _syncBurst(pid);
+      return;
+    }
+  }
+
+  _validateInputForm();
+}
+
 function _attachClamp(input, bounds) {
-  input.addEventListener('blur', () => _clampInput(input, bounds));
+  if (!input) return;
+
+  if (input.dataset.baseTitle === undefined) {
+    input.dataset.baseTitle = input.getAttribute('title') || '';
+  }
+  input.setAttribute('step', '1');
+  input.setAttribute('inputmode', 'numeric');
+
+  input.addEventListener('keydown', event => {
+    if (['e', 'E', '+', '-', '.', ','].includes(event.key)) {
+      event.preventDefault();
+    }
+  });
+  input.addEventListener('input', () => {
+    _validateBoundedInput(input, bounds);
+    _afterBoundedInputChanged(input);
+  });
+  input.addEventListener('blur', () => {
+    _clampInput(input, bounds);
+    _afterBoundedInputChanged(input);
+  });
+  _validateBoundedInput(input, bounds);
 }
 
 // ─── Process row ─────────────────────────────────────────────────────────────
@@ -579,6 +685,7 @@ function _addProcessRow() {
   _attachClamp(tr.querySelector('.inp-burst'),    LIMITS.burst);
   _attachClamp(tr.querySelector('.inp-priority'), LIMITS.priority);
   _attachClamp(tr.querySelector('.inp-shared'),   LIMITS.shared);
+  _validateInputForm();
 }
 
 function _makeThreadContainer(pid) {
@@ -605,6 +712,7 @@ function _deleteProcess(pid) {
   _forkMetaByPid.delete(pid);
   _updateLoadedFilesUI();
   _renderForkSummary();
+  _validateInputForm();
 }
 
 function _clearAll() {
@@ -620,6 +728,7 @@ function _clearAll() {
   _updateLoadedFilesUI(0);
   _addProcessRow();
   _renderForkSummary();
+  _validateInputForm();
   toast('Procesos limpiados.', 'info', 1800);
 }
 
@@ -702,6 +811,7 @@ function _addThreadRow(pid) {
     div.remove();
     _syncBurst(pid);
     _syncToggle(pid);
+    _validateInputForm();
   });
   div.querySelector('.inp-t-burst').addEventListener('input', () => _syncBurst(pid));
 
@@ -711,6 +821,7 @@ function _addThreadRow(pid) {
 
   _syncBurst(pid);
   _syncToggle(pid);
+  _validateInputForm();
 }
 
 function _syncBurst(pid) {
@@ -728,6 +839,7 @@ function _syncBurst(pid) {
     const sum = [...rows].reduce((s, r) => s + (parseInt(r.querySelector('.inp-t-burst').value) || 0), 0);
     burstInput.value = sum;
   }
+  _validateInputForm();
 }
 
 function _syncToggle(pid) {
@@ -745,6 +857,183 @@ function _syncToggle(pid) {
     const arrow = container.hidden ? '►' : '▼';
     toggleBtn.textContent = `${arrow} ${count} thread${count !== 1 ? 's' : ''}`;
   }
+}
+
+function _processDisplayLabel(pid) {
+  return _forkMetaByPid.get(pid)?.forkLabel || `P${pid}`;
+}
+
+function _pushUnique(errors, message) {
+  if (message && !errors.includes(message)) errors.push(message);
+}
+
+function _renderValidationErrors(container, errors) {
+  if (!container) return;
+
+  container.innerHTML = '';
+  if (errors.length === 0) {
+    container.hidden = true;
+    return;
+  }
+
+  const shown = errors.slice(0, VALIDATION_SUMMARY_LIMIT);
+  for (const error of shown) {
+    const item = document.createElement('div');
+    item.className = 'inp-error-item';
+    item.textContent = error;
+    container.appendChild(item);
+  }
+
+  if (errors.length > shown.length) {
+    const item = document.createElement('div');
+    item.className = 'inp-error-item';
+    item.textContent = `... y ${errors.length - shown.length} errores mas.`;
+    container.appendChild(item);
+  }
+
+  container.hidden = false;
+}
+
+function _validateProcessRows() {
+  const errors = [];
+  const rows = [...document.querySelectorAll('.inp-proc-row')];
+
+  if (rows.length < LIMITS.processes.min) {
+    _pushUnique(errors, 'Agrega al menos un proceso.');
+  }
+  if (rows.length > LIMITS.processes.max) {
+    _pushUnique(errors, `Maximo ${LIMITS.processes.max} procesos por simulacion.`);
+  }
+
+  const seenPids = new Set();
+  for (const row of rows) {
+    const pid = Number(row.dataset.pid);
+    const label = _processDisplayLabel(pid);
+    if (!Number.isInteger(pid) || pid < 1) {
+      _pushUnique(errors, 'PID invalido en una fila de proceso.');
+    } else if (seenPids.has(pid)) {
+      _pushUnique(errors, `PID duplicado: ${label}.`);
+    }
+    seenPids.add(pid);
+
+    const arrivalInput = row.querySelector('.inp-arrival');
+    const burstInput = row.querySelector('.inp-burst');
+    const priorityInput = row.querySelector('.inp-priority');
+    const sharedInput = row.querySelector('.inp-shared');
+    const threadList = document.querySelector(`.inp-thread-list[data-pid="${pid}"]`);
+    const threadRows = threadList ? [...threadList.querySelectorAll('.inp-thread-row')] : [];
+
+    const arrival = _validateBoundedInput(arrivalInput, LIMITS.arrival);
+    if (!arrival.valid) _pushUnique(errors, `${label}: ${arrival.message}`);
+
+    const priority = _validateBoundedInput(priorityInput, LIMITS.priority);
+    if (!priority.valid) _pushUnique(errors, `${label}: ${priority.message}`);
+
+    const shared = _validateBoundedInput(sharedInput, LIMITS.shared);
+    if (!shared.valid) _pushUnique(errors, `${label}: ${shared.message}`);
+
+    if (threadRows.length === 0) {
+      const burst = _validateBoundedInput(burstInput, LIMITS.burst);
+      if (!burst.valid) _pushUnique(errors, `${label}: ${burst.message}`);
+    } else {
+      _clearInputInvalid(burstInput);
+    }
+
+    if (threadRows.length > LIMITS.threads.max) {
+      _pushUnique(errors, `${label}: maximo ${LIMITS.threads.max} threads por proceso.`);
+    }
+
+    let totalThreadBurst = 0;
+    let allThreadBurstsValid = true;
+
+    for (const threadRow of threadRows) {
+      const localTid = threadRow.dataset.localTid || '?';
+      const threadLabel = `${label} T${localTid}`;
+      const tArrivalInput = threadRow.querySelector('.inp-t-arrival');
+      const tBurstInput = threadRow.querySelector('.inp-t-burst');
+      const tStackInput = threadRow.querySelector('.inp-t-stack');
+
+      const tArrival = _validateBoundedInput(tArrivalInput, LIMITS.arrival);
+      if (!tArrival.valid) _pushUnique(errors, `${threadLabel}: ${tArrival.message}`);
+
+      const tBurst = _validateBoundedInput(tBurstInput, LIMITS.burst);
+      if (!tBurst.valid) {
+        allThreadBurstsValid = false;
+        _pushUnique(errors, `${threadLabel}: ${tBurst.message}`);
+      } else {
+        totalThreadBurst += tBurst.value;
+      }
+
+      const tStack = _validateBoundedInput(tStackInput, LIMITS.stackPages);
+      if (!tStack.valid) _pushUnique(errors, `${threadLabel}: ${tStack.message}`);
+
+      if (arrival.valid && tArrival.valid && tArrival.value < arrival.value) {
+        const message = `${threadLabel}: llegada debe ser >= llegada del proceso (${arrival.value}).`;
+        _setInputInvalid(tArrivalInput, message);
+        _pushUnique(errors, message);
+      }
+    }
+
+    if (threadRows.length > 0 && allThreadBurstsValid) {
+      if (totalThreadBurst < LIMITS.burst.min || totalThreadBurst > LIMITS.burst.max) {
+        const message = `${label}: la suma de CPU bursts de threads (${totalThreadBurst}) debe estar en el rango ${_rangeText(LIMITS.burst)}.`;
+        _setInputInvalid(burstInput, message);
+        _pushUnique(errors, message);
+      } else {
+        _clearInputInvalid(burstInput);
+      }
+    }
+  }
+
+  return errors;
+}
+
+function _validateMemoryInputs() {
+  const errors = [];
+  const totalMemory = Number(document.getElementById('inp-mem-size')?.value);
+  const pageSize = Number(document.getElementById('inp-page-size')?.value);
+
+  if (!Number.isInteger(totalMemory) || totalMemory < LIMITS.totalMem.min || totalMemory > LIMITS.totalMem.max) {
+    _pushUnique(errors, `Memoria total debe estar en el rango ${_rangeText(LIMITS.totalMem)} KB.`);
+  }
+  if (!Number.isInteger(pageSize) || pageSize < LIMITS.pageSize.min || pageSize > LIMITS.pageSize.max) {
+    _pushUnique(errors, `Page size debe estar en el rango ${_rangeText(LIMITS.pageSize)} KB.`);
+  }
+  if (Number.isInteger(totalMemory) && Number.isInteger(pageSize) && pageSize > 0 && totalMemory % pageSize !== 0) {
+    _pushUnique(errors, 'La memoria total debe ser divisible entre el page size.');
+  }
+
+  return errors;
+}
+
+function _validateInputForm() {
+  const processErrors = _validateProcessRows();
+  const memoryErrors = _validateMemoryInputs();
+  const allErrors = [...processErrors, ...memoryErrors];
+  const procErrEl = document.getElementById('inp-proc-errors');
+  const runBtn = document.getElementById('inp-run-btn');
+  const runMsg = document.getElementById('inp-run-bar-msg');
+
+  _renderValidationErrors(procErrEl, processErrors);
+
+  if (runBtn) runBtn.disabled = allErrors.length > 0;
+  if (runMsg) {
+    if (allErrors.length > 0) {
+      const suffix = allErrors.length > 1 ? ` (${allErrors.length} errores)` : '';
+      runMsg.textContent = `${allErrors[0]}${suffix}`;
+      runMsg.classList.add('inp-run-bar-msg--error');
+    } else {
+      runMsg.textContent = 'Configura tus procesos y luego ejecuta la simulacion.';
+      runMsg.classList.remove('inp-run-bar-msg--error');
+    }
+  }
+
+  return {
+    valid: allErrors.length === 0,
+    errors: allErrors,
+    processErrors,
+    memoryErrors,
+  };
 }
 
 function _toggleThreads(pid) {
@@ -910,6 +1199,7 @@ function _insertProcessFromModel(proc, { showThreads = false, afterNode = null }
         div.remove();
         _syncBurst(proc.pid);
         _syncToggle(proc.pid);
+        _validateInputForm();
       });
       div.querySelector('.inp-t-burst').addEventListener('input', () => _syncBurst(proc.pid));
 
@@ -919,6 +1209,7 @@ function _insertProcessFromModel(proc, { showThreads = false, afterNode = null }
     });
   }
 
+  _validateInputForm();
   return { tr, containerTr };
 }
 
@@ -931,6 +1222,12 @@ function _parseCurrentProcessesForFork() {
 }
 
 function _forkProcess(parentPid, { silent = false } = {}) {
+  const formValidation = _validateInputForm();
+  if (!formValidation.valid) {
+    if (!silent) toast('Corrige las restricciones antes de hacer fork().', 'err');
+    return;
+  }
+
   const procCount = document.querySelectorAll('.inp-proc-row').length;
   if (procCount >= LIMITS.processes.max) {
     toast(`Máximo ${LIMITS.processes.max} procesos por simulación.`, 'warn');
@@ -950,6 +1247,7 @@ function _forkProcess(parentPid, { silent = false } = {}) {
     });
     _nextPid = Math.max(_nextPid, child.pid + 1);
     _renderForkSummary();
+    _validateInputForm();
     if (!silent) toast(`${child.forkLabel || `P${child.pid}`} creado por fork() de P${parentPid}.`, 'ok');
   } catch (error) {
     toast(error.message || 'No se pudo simular fork().', 'err');
@@ -1029,6 +1327,7 @@ function _setMemoryConfig(totalMemory, pageSize) {
   _setStepperDisabled('total', total, validTotals);
   _setStepperDisabled('page', page, validPages);
   _updateFramesDisplay();
+  _validateInputForm();
 }
 
 function _stepMemoryValue(kind, dir) {
@@ -1103,6 +1402,86 @@ function _updateFramesDisplay() {
 
 // ─── File upload ──────────────────────────────────────────────────────────────
 
+function _pushModelRangeError(errors, label, value, bounds) {
+  if (!Number.isInteger(value)) {
+    _pushUnique(errors, `${label}: debe ser entero.`);
+    return false;
+  }
+  if (value < bounds.min || value > bounds.max) {
+    _pushUnique(errors, `${label}: debe estar en el rango ${_rangeText(bounds)}.`);
+    return false;
+  }
+  return true;
+}
+
+function _validateProcessModelLimits(processes) {
+  const errors = [];
+  if (processes.length < LIMITS.processes.min) {
+    _pushUnique(errors, 'Agrega al menos un proceso.');
+  }
+  if (processes.length > LIMITS.processes.max) {
+    _pushUnique(errors, `Maximo ${LIMITS.processes.max} procesos por simulacion.`);
+  }
+
+  const seenPids = new Set();
+  for (const proc of processes) {
+    const pid = Number(proc.pid);
+    const label = Number.isInteger(pid) ? `P${pid}` : 'Proceso';
+    if (!Number.isInteger(pid) || pid < 1) {
+      _pushUnique(errors, `${label}: PID debe ser entero positivo.`);
+    } else if (seenPids.has(pid)) {
+      _pushUnique(errors, `${label}: PID duplicado.`);
+    }
+    seenPids.add(pid);
+
+    _pushModelRangeError(errors, `${label} llegada`, proc.arrivalTime, LIMITS.arrival);
+    _pushModelRangeError(errors, `${label} CPU burst`, proc.burstTime, LIMITS.burst);
+    _pushModelRangeError(errors, `${label} prioridad`, proc.priority, LIMITS.priority);
+    _pushModelRangeError(errors, `${label} sharedPages`, proc.sharedPages, LIMITS.shared);
+
+    const threads = Array.isArray(proc.threads) ? proc.threads : [];
+    if (threads.length === 0) {
+      _pushUnique(errors, `${label}: debe tener al menos un thread.`);
+    }
+    if (threads.length > LIMITS.threads.max) {
+      _pushUnique(errors, `${label}: maximo ${LIMITS.threads.max} threads por proceso.`);
+    }
+
+    let threadBurstSum = 0;
+    let allThreadBurstsValid = true;
+    threads.forEach((thread, index) => {
+      const threadLabel = `${label} T${thread.tid ?? index + 1}`;
+      const arrivalOk = _pushModelRangeError(errors, `${threadLabel} llegada`, thread.arrivalTime, LIMITS.arrival);
+      const burstOk = _pushModelRangeError(errors, `${threadLabel} CPU burst`, thread.burstTime, LIMITS.burst);
+      _pushModelRangeError(errors, `${threadLabel} stackPages`, thread.stackPages, LIMITS.stackPages);
+
+      if (burstOk) threadBurstSum += thread.burstTime;
+      else allThreadBurstsValid = false;
+
+      if (arrivalOk && Number.isInteger(proc.arrivalTime) && thread.arrivalTime < proc.arrivalTime) {
+        _pushUnique(errors, `${threadLabel}: llegada debe ser >= llegada del proceso (${proc.arrivalTime}).`);
+      }
+    });
+
+    if (threads.length > 0 && allThreadBurstsValid && threadBurstSum !== proc.burstTime) {
+      _pushUnique(errors, `${label}: CPU burst debe ser la suma de sus threads (${threadBurstSum}).`);
+    }
+  }
+
+  return errors;
+}
+
+function _validateImportedProcessLimits(processes) {
+  const errors = _validateProcessModelLimits(processes);
+  if (errors.length === 0) return;
+
+  const shown = errors.slice(0, VALIDATION_SUMMARY_LIMIT).map(error => `- ${error}`).join('\n');
+  const more = errors.length > VALIDATION_SUMMARY_LIMIT
+    ? `\n... y ${errors.length - VALIDATION_SUMMARY_LIMIT} errores mas`
+    : '';
+  throw new Error(`Restricciones de entrada:\n${shown}${more}`);
+}
+
 function _detectProcessFileColumnCount(content) {
   const rows = content
     .trim()
@@ -1121,13 +1500,13 @@ function _renderFileLoadError(errEl, err) {
   const lines = message
     .split(/\r?\n/)
     .map(line => line.trim())
-    .filter(line => line.startsWith('Línea ') || line.startsWith('... y '));
+    .filter(line => line.startsWith('Línea ') || line.startsWith('- ') || line.startsWith('... y '));
 
   errEl.innerHTML = '';
   const title = document.createElement('div');
   title.textContent = message.startsWith('Validación regex falló')
     ? 'Validación regex falló:'
-    : `Error: ${message}`;
+    : message.split(/\r?\n/)[0] || 'Error de carga';
   errEl.appendChild(title);
 
   if (lines.length > 0) {
@@ -1168,6 +1547,7 @@ function _handleFileUpload(e) {
       }
 
       const parsedProcesses = parseProcessesFromFileValidated(content);
+      _validateImportedProcessLimits(parsedProcesses);
       const currentCount = _loadedFileCount === 0 ? 0 : _processRowCount();
       const totalCount = currentCount + parsedProcesses.length;
 
@@ -1255,6 +1635,7 @@ function _populateFromProcesses(processes, showThreads, { incremental = false, a
           div.remove();
           _syncBurst(proc.pid);
           _syncToggle(proc.pid);
+          _validateInputForm();
         });
         div.querySelector('.inp-t-burst').addEventListener('input', () => _syncBurst(proc.pid));
 
@@ -1264,6 +1645,7 @@ function _populateFromProcesses(processes, showThreads, { incremental = false, a
       });
     }
   }
+  _validateInputForm();
 }
 
 // ─── Templates download ──────────────────────────────────────────────────────
@@ -1328,6 +1710,7 @@ function _loadExample(exampleId = 'basic') {
   }
 
   _renderForkSummary();
+  _validateInputForm();
 
   toast(`Ejemplo cargado: ${preset.title}.`, 'info');
 }
@@ -1363,6 +1746,12 @@ function _handleRunSimulation() {
   procErrEl.innerHTML = '';
   memErrEl.hidden     = true;
   memErrEl.textContent = '';
+
+  const liveValidation = _validateInputForm();
+  if (!liveValidation.valid) {
+    toast('Corrige las restricciones marcadas antes de ejecutar.', 'err');
+    return;
+  }
 
   const rawProcesses = _collectRawProcesses();
   if (rawProcesses.length === 0) {
