@@ -6,6 +6,17 @@ Simulador de planificacion de procesos (scheduling) y paginacion de memoria para
 
 CoreView es una aplicacion web educativa que permite visualizar y comparar distintos algoritmos de planificacion de CPU y de reemplazo de paginas en memoria. Esta hecha con HTML, CSS y JavaScript puro (sin frameworks) y usa ES modules.
 
+## Vista previa
+
+### Threads ejecutando en paralelo — 4 cores activos
+![Threads Multi-Core con 4 cores](docs/screenshots/03-threads-4cores.png)
+
+### Web Workers reales visibles en DevTools
+![Web Workers en DevTools](docs/screenshots/04-devtools-workers.png)
+
+### Fork y Copy-on-Write en pantalla de Memoria
+![Fork COW en Memoria](docs/screenshots/07-fork-cow.png)
+
 ## Algoritmos incluidos
 
 ### Planificacion de procesos

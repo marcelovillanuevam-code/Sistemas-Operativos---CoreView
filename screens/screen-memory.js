@@ -203,21 +203,21 @@ export function initMemoryScreen() {
   ensureCowStyles();
 
   root.innerHTML = `
-    <h2>Memoria fisica</h2>
+    <h2>Memoria física</h2>
     <p class="screen-desc">
-      La memoria esta dividida en <b>marcos</b> de tamano fijo. Las paginas COW
-      creadas por fork() comparten el mismo marco fisico hasta que una escritura
+      La memoria está dividida en <b>frames</b> de tamaño fijo. Las páginas COW
+      creadas por fork() comparten el mismo frame físico hasta que una escritura
       materializa una copia privada.
     </p>
 
     <div id="mem-data-banner"></div>
     <div id="mem-warning"></div>
     <div class="concept-panel">
-      <div class="concept-panel-title">Que estas viendo</div>
+      <div class="concept-panel-title">Qué estás viendo</div>
       <div class="concept-panel-grid">
-        <div><b>Marco</b>: espacio fisico de memoria. Cada bloque del grid es un frame real disponible.</div>
-        <div><b>Pagina</b>: porcion logica de un proceso cargada dentro de un marco fisico.</div>
-        <div><b>COW por fork()</b>: si ves candado, padre e hijo comparten ese marco; al escribir se materializa una copia privada.</div>
+        <div><b>Frame</b>: espacio físico de memoria. Cada bloque del grid es un frame real disponible.</div>
+        <div><b>Page</b>: porción lógica de un proceso cargada dentro de un frame físico.</div>
+        <div><b>COW por fork()</b>: si ves candado, padre e hijo comparten ese frame; al escribir se materializa una copia privada.</div>
       </div>
     </div>
     <div id="mem-fork-summary" class="fork-summary" hidden></div>
@@ -237,9 +237,9 @@ export function initMemoryScreen() {
       bannerEl.innerHTML =
         `<div class="banner-info">` +
         `  <span class="banner-icon">i</span>` +
-        `  Mostrando asignacion de memoria para tus <b>${AppState.processes.length}</b> proceso(s) - ` +
-        `  <b>${config.totalMemory} KB</b> totales · pagina de <b>${config.pageSize} KB</b> · ` +
-        `  <b>${config.numFrames}</b> marcos` +
+        `  Mostrando asignación de memoria para tus <b>${AppState.processes.length}</b> proceso(s) - ` +
+        `  <b>${config.totalMemory} KB</b> totales · page size de <b>${config.pageSize} KB</b> · ` +
+        `  <b>${config.numFrames}</b> frames` +
         (cowCount > 0 ? ` · <b>${cowCount}</b> enlaces COW` : '') +
         `</div>`;
     } else {
@@ -267,17 +267,17 @@ export function initMemoryScreen() {
       warnEl.innerHTML =
         `<div class="banner-info banner-warn">` +
         `  <span class="banner-icon">!</span>` +
-        `  La asignacion fisica requiere <b>${memState.requiredPhysicalPages}</b> paginas pero solo hay ` +
-        `  <b>${config.numFrames}</b> marcos disponibles (<b>${overflow}</b> paginas no caben).` +
+        `  La asignación física requiere <b>${memState.requiredPhysicalPages}</b> páginas pero solo hay ` +
+        `  <b>${config.numFrames}</b> frames disponibles (<b>${overflow}</b> páginas no caben).` +
         (cowNoFreeFrame
-          ? ` Para demostrar una copia privada COW, vuelve a Entrada y sube Memoria total a <b>${recommendedTotal} KB</b> o mas.`
+          ? ` Para demostrar una copia privada COW, vuelve a Entrada y sube Memoria total a <b>${recommendedTotal} KB</b> o más.`
           : '') +
         `</div>`;
     } else if (cowNoFreeFrame) {
       warnEl.innerHTML =
         `<div class="banner-info banner-warn">` +
         `  <span class="banner-icon">!</span>` +
-        `  Hay paginas COW, pero <b>0 marcos libres</b>. Para pulsar Escribir y crear una copia privada, agrega al menos un marco libre en Entrada.` +
+        `  Hay páginas COW, pero <b>0 frames libres</b>. Para pulsar Escribir y crear una copia privada, agrega al menos un frame libre en Entrada.` +
         `</div>`;
     } else {
       warnEl.innerHTML = '';
@@ -326,14 +326,14 @@ export function initMemoryScreen() {
       : 0;
     const hasCowPages = children.some(child => (child.memory?.cowPages?.length || 0) > 0);
     const cowBlockedNote = hasCowPages && freeFrames === 0
-      ? `<div class="fork-summary-help fork-summary-help--warn">Ahora hay 0 marcos libres; por eso la escritura COW queda bloqueada. Sube la memoria total para dejar al menos 1 marco libre.</div>`
+      ? `<div class="fork-summary-help fork-summary-help--warn">Ahora hay 0 frames libres; por eso la escritura COW queda bloqueada. Sube la memoria total para dejar al menos 1 frame libre.</div>`
       : '';
 
     forkSummaryEl.hidden = false;
     forkSummaryEl.innerHTML =
       `<div class="fork-summary-title">Relaciones fork() en memoria</div>` +
       `<div class="fork-summary-list">${rows}</div>` +
-      `<div class="fork-summary-help">Los marcos con candado son paginas compartidas por Copy-on-Write; al pulsar Escribir se crea una copia privada si hay marcos libres.</div>` +
+      `<div class="fork-summary-help">Los frames con candado son páginas compartidas por Copy-on-Write; al pulsar Escribir se crea una copia privada si hay frames libres.</div>` +
       cowBlockedNote;
   }
 
@@ -357,7 +357,7 @@ export function initMemoryScreen() {
     const isCow = hasCowPage(processes, pid, pageNumber);
     const freeFrames = beforeState.frames.filter(frame => frame.ownerPid === null).length;
     if (isCow && freeFrames <= 0) {
-      toast('No hay marcos libres para duplicar la pagina COW. Sube Memoria total en Entrada.', 'err');
+      toast('No hay frames libres para duplicar la página COW. Sube Memoria total en Entrada.', 'err');
       return;
     }
 
@@ -369,15 +369,15 @@ export function initMemoryScreen() {
         kind: result.duplicated ? 'cow-copy' : 'write',
       };
       toast(result.duplicated
-        ? `P${pid} duplico pagina ${pageNumber} por COW.`
-        : `P${pid} escribio pagina ${pageNumber}.`, 'ok');
+        ? `P${pid} duplicó página ${pageNumber} por COW.`
+        : `P${pid} escribió página ${pageNumber}.`, 'ok');
       render();
       setTimeout(() => {
         _lastHighlight = null;
         render();
       }, 650);
     } catch (error) {
-      toast(error.message || 'No se pudo escribir la pagina.', 'err');
+      toast(error.message || 'No se pudo escribir la página.', 'err');
     }
   }
 

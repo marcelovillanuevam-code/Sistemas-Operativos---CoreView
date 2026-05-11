@@ -36,7 +36,7 @@ const EXAMPLE_PRESETS = [
     id: 'basic',
     title: 'Base 5 columnas',
     meta: '3 procesos',
-    description: 'Carga minima para FCFS, SJF, Priority y paginacion simple.',
+    description: 'Carga mínima para FCFS, SJF, Priority y page replacement simple.',
     memory: { totalMemory: 256, pageSize: 32 },
     showThreads: false,
     processes: [
@@ -49,7 +49,7 @@ const EXAMPLE_PRESETS = [
     id: 'threads',
     title: 'Threads escalonados',
     meta: '3 procesos / 6 threads',
-    description: 'Expone rafagas por thread, llegadas distintas y stacks privados.',
+    description: 'Expone CPU bursts por thread, llegadas distintas y stacks privados.',
     memory: { totalMemory: 512, pageSize: 64 },
     showThreads: true,
     processes: [
@@ -214,26 +214,26 @@ function _processCells(proc, { hasThreads = false, pidCell = null } = {}) {
       'inp-field-cell--arrival'
     )}
     ${_fieldCell(
-      'Rafaga',
-      `Tiempo total de CPU. Si tiene threads, se calcula como suma de rafagas. Rango: ${LIMITS.burst.min}-${LIMITS.burst.max}.`,
+      'CPU burst',
+      `Tiempo total de CPU. Si tiene threads, se calcula como suma de CPU bursts. Rango: ${LIMITS.burst.min}-${LIMITS.burst.max}.`,
       `<input type="number" class="inp-num inp-burst${hasThreads ? ' inp-readonly' : ''}" min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${proc.burstTime}"${hasThreads ? ' readonly' : ''}>`,
       'inp-field-cell--burst'
     )}
     ${_fieldCell(
       'Prioridad',
-      `Menor numero = mayor prioridad. Usado por Priority, MLQ y MLFQ. Rango: ${LIMITS.priority.min}-${LIMITS.priority.max}.`,
+      `Menor número = mayor prioridad. Usado por Priority, MLQ y MLFQ. Rango: ${LIMITS.priority.min}-${LIMITS.priority.max}.`,
       `<input type="number" class="inp-num inp-priority" min="${LIMITS.priority.min}" max="${LIMITS.priority.max}" value="${proc.priority}">`,
       'inp-field-cell--priority'
     )}
     ${_fieldCell(
-      'Pag. compartidas',
-      `Paginas compartidas por todos los threads. Total = sharedPages + suma(stackPages). Rango: ${LIMITS.shared.min}-${LIMITS.shared.max}.`,
+      'Shared pages',
+      `Páginas compartidas por todos los threads. Total = sharedPages + suma(stackPages). Rango: ${LIMITS.shared.min}-${LIMITS.shared.max}.`,
       `<input type="number" class="inp-num inp-shared" min="${LIMITS.shared.min}" max="${LIMITS.shared.max}" value="${proc.sharedPages}">`,
       'inp-field-cell--shared'
     )}
     <td class="inp-thread-cell">
       <div class="inp-field">
-        <span class="inp-field-top">Threads ${_helpHint(`Desglosa la rafaga en threads independientes. Maximo ${LIMITS.threads.max} por proceso.`)}</span>
+        <span class="inp-field-top">Threads ${_helpHint(`Desglosa el CPU burst en threads independientes. Máximo ${LIMITS.threads.max} por proceso.`)}</span>
         <div class="inp-thread-actions">
           <button type="button" class="inp-btn-sm inp-toggle-threads" data-pid="${pid}"${hasThreads ? '' : ' hidden'}>${toggleText}</button>
           <button type="button" class="inp-btn-sm inp-add-thread" data-pid="${pid}">+ Thread</button>
@@ -241,7 +241,7 @@ function _processCells(proc, { hasThreads = false, pidCell = null } = {}) {
       </div>
     </td>
     <td class="inp-action-cell">
-      <span class="inp-field-top">Acciones ${_helpHint('Fork duplica el proceso y activa paginas Copy-on-Write para revisarlas en Memoria.', 'left')}</span>
+      <span class="inp-field-top">Acciones ${_helpHint('Fork duplica el proceso y activa páginas Copy-on-Write para revisarlas en Memoria.', 'left')}</span>
       <div class="inp-row-actions">
         <button type="button" class="inp-btn-sm inp-fork-proc" data-pid="${pid}" title="Simular fork()">Fork()</button>
         <button type="button" class="inp-btn-sm inp-btn-danger inp-del-proc" data-pid="${pid}" title="Eliminar proceso">×</button>
@@ -258,11 +258,11 @@ function _threadCells(localTid, arrival, burst, stackPages) {
       <input type="number" class="inp-num inp-t-arrival" min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="${arrival}" title="Thread arrival">
     </label>
     <label class="inp-thread-field">
-      <span>Rafaga ${_helpHint(`CPU requerida por este thread. Rango: ${LIMITS.burst.min}-${LIMITS.burst.max}.`)}</span>
+      <span>CPU burst ${_helpHint(`CPU requerida por este thread. Rango: ${LIMITS.burst.min}-${LIMITS.burst.max}.`)}</span>
       <input type="number" class="inp-num inp-t-burst" min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${burst}" title="Thread burst">
     </label>
     <label class="inp-thread-field">
-      <span>Stack ${_helpHint(`Paginas privadas del stack del thread. Rango: ${LIMITS.stackPages.min}-${LIMITS.stackPages.max}.`)}</span>
+      <span>Stack ${_helpHint(`Páginas privadas del stack del thread. Rango: ${LIMITS.stackPages.min}-${LIMITS.stackPages.max}.`)}</span>
       <input type="number" class="inp-num inp-t-stack" min="${LIMITS.stackPages.min}" max="${LIMITS.stackPages.max}" value="${stackPages}" title="Stack pages">
     </label>
     <button type="button" class="inp-btn-sm inp-btn-danger inp-del-thread" title="Eliminar thread">×</button>
@@ -344,9 +344,9 @@ export function initInputScreen() {
         <div class="inp-examples-head">
           <div>
             <div class="inp-examples-title">Ejemplos de carga</div>
-            <div class="inp-examples-desc">Escenarios listos para probar procesos, threads, fork(), COW y paginacion.</div>
+            <div class="inp-examples-desc">Escenarios listos para probar procesos, threads, fork(), COW y page replacement.</div>
           </div>
-          ${_helpHint('Cada ejemplo reemplaza la captura actual y ajusta memoria con valores validos.', 'left')}
+          ${_helpHint('Cada ejemplo reemplaza la captura actual y ajusta memoria con valores válidos.', 'left')}
         </div>
         <div class="inp-example-grid">
           ${_renderExampleCards()}
@@ -358,8 +358,8 @@ export function initInputScreen() {
         <div class="concept-panel-title">Fork y Copy-on-Write</div>
         <div class="concept-panel-grid">
           <div><b>Fork()</b> duplica un proceso desde la fila seleccionada y crea un hijo schedulable.</div>
-          <div><b>COW</b> hace que padre e hijo compartan paginas al inicio; la copia privada aparece hasta escribir en Memoria.</div>
-          <div><b>Flujo</b>: presiona <span class="concept-kbd">Fork()</span>, luego <span class="concept-kbd">Ejecutar simulacion</span> y revisa la pantalla Memoria.</div>
+          <div><b>COW</b> hace que padre e hijo compartan páginas al inicio; la copia privada aparece hasta escribir en Memoria.</div>
+          <div><b>Flujo</b>: presiona <span class="concept-kbd">Fork()</span>, luego <span class="concept-kbd">Ejecutar simulación</span> y revisa la pantalla Memoria.</div>
         </div>
       </div>
       <div id="inp-fork-summary" class="fork-summary" hidden></div>
@@ -388,8 +388,8 @@ export function initInputScreen() {
       <div class="inp-memory-grid">
         <div class="inp-memory-stepper">
           <div class="inp-memory-label">
-            <span>Memoria total (KB) ${_helpHint(`Memoria fisica disponible. Valores validos entre ${LIMITS.totalMem.min} y ${LIMITS.totalMem.max} KB.`)}</span>
-            <span class="field-help" id="inp-mem-size-help">Paso valido actual</span>
+            <span>Memoria total (KB) ${_helpHint(`Memoria física disponible. Valores válidos entre ${LIMITS.totalMem.min} y ${LIMITS.totalMem.max} KB.`)}</span>
+            <span class="field-help" id="inp-mem-size-help">Paso válido actual</span>
           </div>
           <div class="inp-stepper">
             <button type="button" class="inp-step-btn" data-memory-step="total" data-dir="-1" aria-label="Memoria anterior">−</button>
@@ -399,13 +399,13 @@ export function initInputScreen() {
         </div>
         <div class="inp-memory-stepper">
           <div class="inp-memory-label">
-            <span>Tamaño de página (KB) ${_helpHint(`Tamano de cada pagina/marco. Solo se muestran tamanos que dividen la memoria total.`)}</span>
-            <span class="field-help" id="inp-page-size-help">Paso valido actual</span>
+            <span>Page size (KB) ${_helpHint(`Tamaño de cada página/frame. Solo se muestran tamaños que dividen la memoria total.`)}</span>
+            <span class="field-help" id="inp-page-size-help">Paso válido actual</span>
           </div>
           <div class="inp-stepper">
-            <button type="button" class="inp-step-btn" data-memory-step="page" data-dir="-1" aria-label="Pagina anterior">−</button>
-            <input type="text" id="inp-page-size" class="inp-stepper-value" value="32" readonly aria-label="Tamano de pagina en KB">
-            <button type="button" class="inp-step-btn" data-memory-step="page" data-dir="1" aria-label="Pagina siguiente">+</button>
+            <button type="button" class="inp-step-btn" data-memory-step="page" data-dir="-1" aria-label="Página anterior">−</button>
+            <input type="text" id="inp-page-size" class="inp-stepper-value" value="32" readonly aria-label="Tamaño de página en KB">
+            <button type="button" class="inp-step-btn" data-memory-step="page" data-dir="1" aria-label="Página siguiente">+</button>
           </div>
         </div>
         <div class="inp-frames-card">
@@ -590,7 +590,7 @@ function _makeThreadContainer(pid) {
     <td colspan="7" class="inp-thread-td">
       <div class="inp-thread-header">
         <span>Threads del proceso</span>
-        <span>Los campos de cada thread actualizan la rafaga total del proceso.</span>
+        <span>Los campos de cada thread actualizan el CPU burst total del proceso.</span>
       </div>
       <div class="inp-thread-list" data-pid="${pid}"></div>
     </td>
@@ -849,7 +849,7 @@ function _renderForkSummary() {
       `<span class="fork-chip fork-chip--parent">${parentLabel}</span>` +
       `<span class="fork-arrow">-&gt;</span>` +
       `<span class="fork-chip fork-chip--child">${childLabel}</span>` +
-      `<span class="fork-summary-note">PID ${childPid}, ${cowCount} pagina${cowCount !== 1 ? 's' : ''} COW compartida${cowCount !== 1 ? 's' : ''}</span>` +
+      `<span class="fork-summary-note">PID ${childPid}, ${cowCount} página${cowCount !== 1 ? 's' : ''} COW compartida${cowCount !== 1 ? 's' : ''}</span>` +
       `</span>`
     );
   }).join('');
@@ -858,7 +858,7 @@ function _renderForkSummary() {
   summary.innerHTML =
     `<div class="fork-summary-title">Forks activos</div>` +
     `<div class="fork-summary-list">${rows}</div>` +
-    `<div class="fork-summary-help">El hijo entra al scheduler como proceso normal; la relacion padre/hijo y COW se ve con detalle en Memoria.</div>`;
+    `<div class="fork-summary-help">El hijo entra al scheduler como proceso normal; la relación padre/hijo y COW se ve con detalle en Memoria.</div>`;
 }
 
 function _insertProcessFromModel(proc, { showThreads = false, afterNode = null } = {}) {
@@ -1023,8 +1023,8 @@ function _setMemoryConfig(totalMemory, pageSize) {
 
   const memHelp = document.getElementById('inp-mem-size-help');
   const pageHelp = document.getElementById('inp-page-size-help');
-  if (memHelp) memHelp.textContent = `${validTotals.length} valores validos con pagina de ${page} KB`;
-  if (pageHelp) pageHelp.textContent = `${validPages.length} tamanos validos para ${total} KB`;
+  if (memHelp) memHelp.textContent = `${validTotals.length} valores válidos con página de ${page} KB`;
+  if (pageHelp) pageHelp.textContent = `${validPages.length} tamaños válidos para ${total} KB`;
 
   _setStepperDisabled('total', total, validTotals);
   _setStepperDisabled('page', page, validPages);
@@ -1060,7 +1060,7 @@ function _updateFramesDisplay() {
 
   if (!memSize || !pageSize || pageSize <= 0) {
     display.textContent = 'Frames: —';
-    if (breakdown) breakdown.textContent = 'Selecciona una combinacion valida';
+    if (breakdown) breakdown.textContent = 'Selecciona una combinación válida';
     display.className   = 'inp-frames-display';
     return;
   }
@@ -1076,7 +1076,7 @@ function _updateFramesDisplay() {
 
   if (pageSize < LIMITS.pageSize.min || pageSize > LIMITS.pageSize.max) {
     display.textContent = 'Frames: — (fuera de rango)';
-    if (breakdown) breakdown.textContent = 'Pagina fuera de rango';
+    if (breakdown) breakdown.textContent = 'Página fuera de rango';
     display.className   = 'inp-frames-display inp-frames-error';
     errEl.textContent   = `Tamaño de página fuera de rango (${LIMITS.pageSize.min}–${LIMITS.pageSize.max} KB).`;
     errEl.hidden        = false;
@@ -1085,7 +1085,7 @@ function _updateFramesDisplay() {
 
   if (memSize % pageSize !== 0) {
     display.textContent = 'Frames: — (no divisible)';
-    if (breakdown) breakdown.textContent = `${memSize} KB no divide en paginas de ${pageSize} KB`;
+    if (breakdown) breakdown.textContent = `${memSize} KB no divide en páginas de ${pageSize} KB`;
     display.className   = 'inp-frames-display inp-frames-error';
     errEl.textContent   = 'La memoria total debe ser divisible entre el tamaño de página.';
     errEl.hidden        = false;
@@ -1095,7 +1095,7 @@ function _updateFramesDisplay() {
     if (breakdown) breakdown.textContent = `${memSize} KB / ${pageSize} KB por frame`;
     display.className   = 'inp-frames-display';
     if (frames > 256) {
-      errEl.textContent = `Aviso: ${frames} marcos podrían ralentizar la visualización. Reduce la memoria o aumenta la página.`;
+      errEl.textContent = `Aviso: ${frames} frames podrían ralentizar la visualización. Reduce la memoria o aumenta la page size.`;
       errEl.hidden = false;
     }
   }
@@ -1438,7 +1438,7 @@ function _handleRunSimulation() {
   AppState.comparisonResult = null;
   AppState.currentAlgorithm = null;
 
-  setAppStatus(`${processes.length} procesos · ${AppState.memoryConfig.numFrames} marcos`, 'ok');
+  setAppStatus(`${processes.length} procesos · ${AppState.memoryConfig.numFrames} frames`, 'ok');
   toast(`Simulación lista — ${processes.length} procesos cargados.`, 'ok');
 
   navigateTo('scheduling');

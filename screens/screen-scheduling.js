@@ -379,7 +379,8 @@ export function initSchedulingScreen() {
     return algo;
   }
 
-  function _run(algo) {
+  function _run(algo, options = {}) {
+    const { publish = true } = options;
     if (_controller) _controller.pause();
 
     currentAlgo = algo;
@@ -388,8 +389,10 @@ export function initSchedulingScreen() {
 
     const key = _cacheKey(algo);
     currentTrace = _getCached(key, () => _computeTrace(algo));
-    AppState.schedulingTrace  = currentTrace;
-    AppState.currentAlgorithm = algo;
+    if (publish) {
+      AppState.schedulingTrace  = currentTrace;
+      AppState.currentAlgorithm = algo;
+    }
 
     labelMap = _buildLabelMap(currentTrace);
     colorMap = _buildColorMap(currentTrace);
@@ -432,12 +435,12 @@ export function initSchedulingScreen() {
     btn.addEventListener('click', () => {
       root.querySelectorAll('.sched-algo-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      _run(btn.dataset.algo);
+      _run(btn.dataset.algo, { publish: true });
     });
   });
 
   root.querySelector('#sched-quantum').addEventListener('change', () => {
-    if (currentAlgo === 'RR') _run('RR');
+    if (currentAlgo === 'RR') _run('RR', { publish: true });
   });
 
   root.querySelector('[data-action="play"]').addEventListener('click', () => {
@@ -472,9 +475,9 @@ export function initSchedulingScreen() {
 
   document.querySelector('[data-tab="scheduling"]')?.addEventListener('click', () => {
     _ensureFreshCache();
-    _run(currentAlgo);
+    _run(currentAlgo, { publish: Boolean(AppState.schedulingTrace) });
   });
 
   root.querySelector('[data-algo="FCFS"]').classList.add('active');
-  _run('FCFS');
+  _run('FCFS', { publish: false });
 }

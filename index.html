@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CoreView — Simulador de Scheduling y Paginación</title>
+  <title>CoreView - Simulador de Scheduling y Page Replacement</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -24,11 +24,11 @@
         <button data-tab="input"      aria-label="Entrada de procesos">1. Entrada</button>
         <button data-tab="scheduling" aria-label="Scheduling">2. Scheduling</button>
         <button data-tab="memory"     aria-label="Memoria">3. Memoria</button>
-        <button data-tab="paging"     aria-label="Paginación">4. Paginación</button>
+        <button data-tab="paging"     aria-label="Page Replacement">4. Page Replacement</button>
         <button data-tab="threads"    aria-label="Threads">5. Threads</button>
         <button data-tab="threads-multicore" aria-label="Multi-Core Threads">6. Multi-Core Threads</button>
         <button data-tab="metrics"    aria-label="Métricas">7. Métricas</button>
-        <button data-tab="comparison" aria-label="Comparación">8. Comparación</button>
+        <button data-tab="comparison" aria-label="Comparison">8. Comparison</button>
         <button data-tab="glossary"   aria-label="Glosario" class="sidebar-nav-secondary">Glosario</button>
       </nav>
 
@@ -53,8 +53,8 @@
           <section class="hero">
             <h1 class="hero-title">CoreView</h1>
             <p class="hero-subtitle">
-              Simulador interactivo de <b>algoritmos de planificación de CPU</b> y
-              <b>reemplazo de páginas en memoria</b> para sistemas operativos.
+              Simulador interactivo de <b>algoritmos de CPU scheduling</b> y
+              <b>page replacement</b> para sistemas operativos.
             </p>
 
             <div class="hero-actions">
@@ -67,7 +67,7 @@
             <article class="home-card">
               <div class="home-card-icon">①</div>
               <h3>Define tus procesos</h3>
-              <p>Configura tiempos de llegada, ráfaga, prioridad y memoria. Importa desde un archivo <code>.txt</code> o ingresa manualmente.</p>
+              <p>Configura tiempos de llegada, CPU burst, prioridad y memoria. Importa desde un archivo <code>.txt</code> o ingresa manualmente.</p>
             </article>
             <article class="home-card">
               <div class="home-card-icon">②</div>
@@ -77,7 +77,7 @@
             <article class="home-card">
               <div class="home-card-icon">③</div>
               <h3>Compara y analiza</h3>
-              <p>Métricas de rendimiento (TAT, WT, RT) y reemplazo de páginas (FIFO, LRU, Optimal) lado a lado para encontrar el mejor.</p>
+              <p>Métricas de rendimiento (TAT, WT, RT) y page replacement (FIFO, LRU, Optimal) lado a lado para encontrar el mejor.</p>
             </article>
           </section>
 
@@ -98,7 +98,7 @@
                 </ul>
               </div>
               <div class="home-algos-col">
-                <h4>Reemplazo de páginas</h4>
+                <h4>Page Replacement</h4>
                 <ul>
                   <li><b>FIFO</b> — First In First Out</li>
                   <li><b>LRU</b> — Least Recently Used</li>
@@ -113,11 +113,11 @@
           <section class="home-section">
             <h2 class="home-section-title">Flujo recomendado</h2>
             <ol class="home-flow">
-              <li><b>Entrada</b> — Define procesos (PID, llegada, ráfaga, prioridad, páginas) y configura la memoria.</li>
-              <li><b>Scheduling</b> — Elige un algoritmo de CPU y observa la animación.</li>
-              <li><b>Memoria</b> — Revisa la asignación inicial de marcos físicos.</li>
-              <li><b>Paginación</b> — Ejecuta un algoritmo de reemplazo sobre la cadena de referencias.</li>
-              <li><b>Métricas / Comparación</b> — Analiza resultados y compara algoritmos.</li>
+              <li><b>Entrada</b> — Define procesos (PID, llegada, CPU burst, prioridad, pages) y configura la memoria.</li>
+              <li><b>Scheduling</b> — Elige un algoritmo de CPU scheduling y observa la animación.</li>
+              <li><b>Memoria</b> — Revisa la asignación inicial de frames físicos.</li>
+              <li><b>Page Replacement</b> — Ejecuta un algoritmo sobre la reference string.</li>
+              <li><b>Métricas / Comparison</b> — Analiza resultados y compara algoritmos.</li>
             </ol>
           </section>
         </div>
@@ -132,43 +132,64 @@
 
         <div data-screen="metrics">
           <h2>Métricas</h2>
-          <p class="screen-desc">Resumen de rendimiento del último algoritmo de scheduling ejecutado, junto con el resumen de paginación.</p>
+          <p class="screen-desc">Resumen de rendimiento del último algoritmo de scheduling ejecutado, junto con el resumen de page replacement.</p>
           <div id="metrics-no-data" class="screen-no-data">
             Ejecuta un algoritmo de scheduling en la pestaña <strong>Scheduling</strong> primero.
           </div>
           <div id="metrics-content" style="display:none">
+            <div id="metrics-run-summary" class="metrics-run-summary"></div>
             <div id="metrics-dashboard"></div>
             <div class="metrics-screen-section">
               <div class="sched-section-title">Métricas por thread — Gráfica de barras (TAT / WT / RT)</div>
+              <div class="chart-guide">
+                <span class="chart-guide-item"><span class="chart-guide-swatch chart-guide-swatch--tat"></span>TAT = tiempo total en el sistema</span>
+                <span class="chart-guide-item"><span class="chart-guide-swatch chart-guide-swatch--wt"></span>WT = espera en ready queue</span>
+                <span class="chart-guide-item"><span class="chart-guide-swatch chart-guide-swatch--rt"></span>RT = primer acceso a CPU</span>
+                <span class="chart-guide-item chart-guide-item--note">En estas métricas, barras más bajas suelen ser mejores.</span>
+              </div>
               <canvas id="metrics-bar-chart"></canvas>
+              <div id="metrics-bar-insight" class="chart-insight"></div>
             </div>
             <div class="metrics-screen-section">
-              <div class="sched-section-title">Resumen de Reemplazo de Páginas</div>
+              <div class="sched-section-title">Resumen de Page Replacement</div>
               <div id="metrics-paging-info" class="metrics-paging-info"></div>
             </div>
           </div>
         </div>
 
         <div data-screen="comparison">
-          <h2>Comparación de algoritmos</h2>
+          <h2>Algorithm Comparison</h2>
           <p class="screen-desc">Ejecuta todos los algoritmos sobre los mismos datos y compara su rendimiento. La estrella ★ marca el mejor en cada métrica.</p>
           <div id="cmp-no-data" class="screen-no-data">
             Agrega procesos en la pestaña <strong>Entrada</strong> y ejecuta la simulación primero.
           </div>
           <div id="cmp-loading" class="cmp-loading" style="display:none">
             <span class="cmp-loading-spinner"></span>
-            <span id="cmp-loading-msg">Ejecutando algoritmos…</span>
+            <span id="cmp-loading-msg">Running algorithms…</span>
           </div>
           <div id="cmp-content" style="display:none">
             <div class="cmp-section">
-              <div class="cmp-section-title">Algoritmos de Scheduling — Métricas promedio por thread</div>
-              <div class="cmp-legend-note">★ = mejor en esa métrica &nbsp;|&nbsp; Azul = TAT promedio &nbsp; Naranja = WT promedio &nbsp; Verde = RT promedio</div>
+              <div class="cmp-section-title">Scheduling Algorithms — Average Metrics per Thread</div>
+              <div class="chart-guide">
+                <span class="chart-guide-item chart-guide-item--star">★ = best value for that metric</span>
+                <span class="chart-guide-item"><span class="chart-guide-swatch chart-guide-swatch--tat"></span>Avg TAT</span>
+                <span class="chart-guide-item"><span class="chart-guide-swatch chart-guide-swatch--cmp-wt"></span>Avg WT</span>
+                <span class="chart-guide-item"><span class="chart-guide-swatch chart-guide-swatch--cmp-rt"></span>Avg RT</span>
+                <span class="chart-guide-item chart-guide-item--note">Cada grupo usa los mismos procesos; menor tiempo promedio es mejor.</span>
+              </div>
               <canvas id="cmp-sched-chart"></canvas>
+              <div id="cmp-sched-insight" class="chart-insight"></div>
             </div>
             <div id="cmp-page-section" class="cmp-section">
-              <div class="cmp-section-title">Algoritmos de Reemplazo de Páginas — Total de fallos</div>
-              <div class="cmp-legend-note">★ = menos fallos &nbsp;|&nbsp; Los porcentajes muestran la tasa de aciertos</div>
+              <div class="cmp-section-title">Page Replacement Algorithms — Page Faults</div>
+              <div class="chart-guide">
+                <span class="chart-guide-item chart-guide-item--star">★ = fewer page faults</span>
+                <span class="chart-guide-item">Bar height = misses</span>
+                <span class="chart-guide-item">Hit rate = pages already loaded</span>
+                <span class="chart-guide-item chart-guide-item--note">Menos page faults y mayor hit rate indican mejor reutilización.</span>
+              </div>
               <canvas id="cmp-page-chart"></canvas>
+              <div id="cmp-page-insight" class="chart-insight cmp-page-insight"></div>
             </div>
             <div id="cmp-best-summary" class="cmp-best"></div>
           </div>
@@ -212,7 +233,7 @@
               <dd>No expropiativo. Atiende en orden de llegada. Simple pero penaliza procesos cortos detrás de largos.</dd>
 
               <dt>SJF — Shortest Job First</dt>
-              <dd>No expropiativo. Selecciona el proceso con menor ráfaga. Optimiza WT pero requiere conocer la duración a priori.</dd>
+              <dd>No expropiativo. Selecciona el proceso con menor CPU burst. Optimiza WT pero requiere conocer la duración a priori.</dd>
 
               <dt>SRTF — Shortest Remaining Time First</dt>
               <dd>Versión expropiativa de SJF. Si llega un proceso con menor tiempo restante, expropia al actual.</dd>
@@ -235,25 +256,25 @@
           </section>
 
           <section class="gl-section">
-            <h3>Memoria y Paginación</h3>
+            <h3>Memoria y Page Replacement</h3>
             <dl class="gl-list">
               <dt>Frame (Marco)</dt>
-              <dd>Bloque físico fijo de memoria. La memoria se divide en marcos del mismo tamaño que las páginas.</dd>
+              <dd>Bloque físico fijo de memoria. La memoria se divide en frames del mismo tamaño que las pages.</dd>
 
               <dt>Page (Página)</dt>
-              <dd>Bloque lógico de un proceso. Cada página puede cargarse en cualquier marco libre.</dd>
+              <dd>Bloque lógico de un proceso. Cada page puede cargarse en cualquier frame libre.</dd>
 
               <dt>Page Fault (Fallo de página)</dt>
-              <dd>Ocurre cuando la página solicitada no está en memoria. Hay que cargarla, posiblemente reemplazando otra.</dd>
+              <dd>Ocurre cuando la page solicitada no está en memoria. Hay que cargarla, posiblemente reemplazando otra.</dd>
 
               <dt>Hit / Hit Rate</dt>
-              <dd>Acierto: la página ya estaba en memoria. La tasa de aciertos es <code>hits / total</code>.</dd>
+              <dd>Acierto: la page ya estaba en memoria. El hit rate es <code>hits / total</code>.</dd>
 
               <dt>Internal Fragmentation</dt>
-              <dd>Espacio desperdiciado dentro del último marco asignado a un proceso cuando éste no llena el marco completo.</dd>
+              <dd>Espacio desperdiciado dentro del último frame asignado a un proceso cuando éste no llena el frame completo.</dd>
 
               <dt>FIFO / LRU / Optimal / Clock</dt>
-              <dd>Estrategias para decidir qué página expulsar cuando ocurre un fallo: la más vieja, la menos recientemente usada, la que se usará más tarde, o usando un bit de referencia circular.</dd>
+              <dd>Estrategias para decidir qué page expulsar cuando ocurre un page fault: la más vieja, la menos recientemente usada, la que se usará más tarde, o usando un bit de referencia circular.</dd>
             </dl>
           </section>
         </div>

@@ -34,6 +34,7 @@ export function runSecondChance(numFrames, refs) {
         isHit: true,
         evicted: null,
         frameState: frames.map(f => ({ ...f })),
+        clockPointer: queue[0] ?? 0,
         referenceBits: frames.map(f => f.referenceBit),
         faultsSoFar: faults,
       });
@@ -64,6 +65,7 @@ export function runSecondChance(numFrames, refs) {
         isHit: false,
         evicted,
         frameState: frames.map(f => ({ ...f })),
+        clockPointer: queue[0] ?? 0,
         referenceBits: frames.map(f => f.referenceBit),
         faultsSoFar: faults,
       });

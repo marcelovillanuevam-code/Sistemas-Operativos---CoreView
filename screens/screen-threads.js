@@ -330,7 +330,7 @@ export function initThreadsScreen() {
     <div class="sched-section">
       <div class="sched-section-title">
         Estado actual
-        <span class="help-hint" tabindex="0" data-tooltip="RUNNING cuenta los cores ocupados en el ultimo update del Dispatcher. Workers activos muestra los workers vivos en la corrida actual.">?</span>
+        <span class="help-hint" tabindex="0" data-tooltip="RUNNING cuenta los cores ocupados en el último update del Dispatcher. Workers activos muestra los workers vivos en la corrida actual.">?</span>
       </div>
       <div class="th-status-strip">
         <div class="th-status-item">

@@ -4,11 +4,11 @@ import { token } from './color-utils.js';
 
 const ALGO_LABELS = {
   FCFS: 'FCFS', SJF: 'SJF', HRRN: 'HRRN', RR: 'RR(q=2)',
-  SRTF: 'SRTF', PRIORITY_PREEMPTIVE: 'PRIO', MLQ: 'MLQ', MLFQ: 'MLFQ',
+  SRTF: 'SRTF', PRIORITY_PREEMPTIVE: 'Priority', MLQ: 'MLQ', MLFQ: 'MLFQ',
 };
 
 const PAGE_ALGO_LABELS = {
-  FIFO: 'FIFO', LRU: 'LRU', OPTIMAL: 'OPT', CLOCK: 'CLOCK', SECOND_CHANCE: '2nd',
+  FIFO: 'FIFO', LRU: 'LRU', OPTIMAL: 'Optimal', CLOCK: 'Clock', SECOND_CHANCE: '2nd Chance',
 };
 
 // Metric colors: analogous hues shifted from accent (#3B82F6 = hsl(217, 91%, 60%))
@@ -29,7 +29,8 @@ function _pageColors(n) {
   return Array.from({ length: n }, (_, i) => `hsl(${(217 + i * 67) % 360}, 65%, 55%)`);
 }
 
-const MARGIN = { top: 36, right: 20, bottom: 76, left: 56 };
+const SCHED_MARGIN = { top: 36, right: 20, bottom: 104, left: 56 };
+const PAGE_MARGIN = { top: 36, right: 20, bottom: 84, left: 56 };
 
 function _clear(ctx) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -66,20 +67,35 @@ function _yAxis(ctx, maxVal, chartX, chartY, chartH, chartW) {
   ctx.restore();
 }
 
-function _xLabel(ctx, label, cx, bottomY, rotated) {
-  const cTertiary = token('--text-tertiary');
-  const fontMono  = `'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace`;
-  ctx.save();
-  ctx.fillStyle = cTertiary;
-  ctx.font = `400 11px ${fontMono}`;
-  ctx.textAlign = 'center';
-  if (rotated) {
-    ctx.translate(cx, bottomY + 6);
-    ctx.rotate(-Math.PI / 5);
-    ctx.fillText(label, 0, 0);
-  } else {
-    ctx.fillText(label, cx, bottomY + 14);
+function _fitText(ctx, label, maxWidth) {
+  if (!Number.isFinite(maxWidth) || ctx.measureText(label).width <= maxWidth) return label;
+  if (maxWidth <= 12) return '';
+
+  let out = label;
+  while (out.length > 1 && ctx.measureText(`${out}…`).width > maxWidth) {
+    out = out.slice(0, -1);
   }
+  return `${out}…`;
+}
+
+function _xLabel(ctx, label, cx, bottomY, maxWidth) {
+  const cSecondary = token('--text-secondary');
+  const cBorder = token('--border-default');
+  const fontMono  = `'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace`;
+
+  ctx.save();
+  ctx.strokeStyle = cBorder;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx, bottomY);
+  ctx.lineTo(cx, bottomY + 5);
+  ctx.stroke();
+
+  ctx.fillStyle = cSecondary;
+  ctx.font = `600 12px ${fontMono}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(_fitText(ctx, label, Math.max(24, maxWidth - 8)), cx, bottomY + 14);
   ctx.restore();
 }
 
@@ -106,6 +122,7 @@ export function renderSchedulingComparisonChart(ctx, comparisons) {
 
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
+  const MARGIN = SCHED_MARGIN;
   const cX = MARGIN.left, cY = MARGIN.top;
   const cW = W - MARGIN.left - MARGIN.right;
   const cH = H - MARGIN.top - MARGIN.bottom;
@@ -160,7 +177,7 @@ export function renderSchedulingComparisonChart(ctx, comparisons) {
       }
     }
 
-    _xLabel(ctx, ALGO_LABELS[c.algorithm] || c.algorithm, groupCenterX, cY + cH, n > 6);
+    _xLabel(ctx, ALGO_LABELS[c.algorithm] || c.algorithm, groupCenterX, cY + cH, groupW);
   }
 
   // Axis lines
@@ -199,6 +216,7 @@ export function renderPageReplacementComparisonChart(ctx, comparisons) {
 
   const PAGE_COLORS = _pageColors(comparisons.length);
   const W = ctx.canvas.width, H = ctx.canvas.height;
+  const MARGIN = PAGE_MARGIN;
   const cX = MARGIN.left, cY = MARGIN.top;
   const cW = W - MARGIN.left - MARGIN.right;
   const cH = H - MARGIN.top - MARGIN.bottom;
@@ -206,6 +224,7 @@ export function renderPageReplacementComparisonChart(ctx, comparisons) {
   let maxFaults = Math.max(...comparisons.map(c => c.totalFaults), 1);
   maxFaults = Math.ceil(maxFaults * 1.15);
   const minFaults = Math.min(...comparisons.map(c => c.totalFaults));
+  const allFaultsEqual = comparisons.every(c => c.totalFaults === minFaults);
 
   _yAxis(ctx, maxFaults, cX, cY, cH, cW);
 
@@ -219,7 +238,7 @@ export function renderPageReplacementComparisonChart(ctx, comparisons) {
     const bx = barcx - barW / 2;
     const barH = (c.totalFaults / maxFaults) * cH;
     const by = cY + cH - barH;
-    const isBest = c.totalFaults === minFaults;
+    const isBest = !allFaultsEqual && c.totalFaults === minFaults;
 
     ctx.fillStyle = PAGE_COLORS[i % PAGE_COLORS.length];
     ctx.fillRect(bx, by, barW, barH);
@@ -238,13 +257,22 @@ export function renderPageReplacementComparisonChart(ctx, comparisons) {
       ctx.fillText(c.totalFaults, barcx, by + barH - 5);
     }
 
-    _xLabel(ctx, PAGE_ALGO_LABELS[c.algorithm] || c.algorithm, barcx, cY + cH, false);
+    _xLabel(ctx, PAGE_ALGO_LABELS[c.algorithm] || c.algorithm, barcx, cY + cH, groupW);
 
     ctx.save();
     ctx.fillStyle = cTertiary;
     ctx.font = `400 10px ${fontMono}`;
     ctx.textAlign = 'center';
-    ctx.fillText(`${(c.hitRate * 100).toFixed(0)}% hit`, barcx, cY + cH + 30);
+    ctx.fillText(`${(c.hitRate * 100).toFixed(0)}% hit rate`, barcx, cY + cH + 34);
+    ctx.restore();
+  }
+
+  if (allFaultsEqual) {
+    ctx.save();
+    ctx.fillStyle = cReady;
+    ctx.font = `700 11px ${fontMono}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`Tie: all algorithms produced ${minFaults} page faults`, cX + cW / 2, cY - 14);
     ctx.restore();
   }
 
@@ -266,7 +294,7 @@ export function renderPageReplacementComparisonChart(ctx, comparisons) {
   ctx.textAlign = 'center';
   ctx.translate(14, cY + cH / 2);
   ctx.rotate(-Math.PI / 2);
-  ctx.fillText('Total Faults', 0, 0);
+  ctx.fillText('Page faults', 0, 0);
   ctx.restore();
 }
 

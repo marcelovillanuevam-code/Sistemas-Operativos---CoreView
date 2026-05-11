@@ -176,7 +176,7 @@ export function writeProcessPage(processes, writerPid, pageNumber) {
     throw new Error(`No existe P${writerPid}.`);
   }
   if (!Number.isInteger(pageNumber) || pageNumber < 0 || pageNumber >= writer.numPages) {
-    throw new Error(`Pagina ${pageNumber} fuera de rango para P${writerPid}.`);
+    throw new Error(`Página ${pageNumber} fuera de rango para P${writerPid}.`);
   }
 
   const memory = ensureMemoryModel(writer);

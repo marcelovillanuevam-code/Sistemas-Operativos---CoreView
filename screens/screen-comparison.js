@@ -36,7 +36,7 @@ function _ensureComparisonExportButton() {
   const actions = document.createElement('div');
   actions.className = 'cmp-export-actions';
   actions.style.marginTop = 'var(--space-4)';
-  actions.innerHTML = `<button type="button" id="cmp-export-csv" class="inp-btn" hidden>Exportar comparación CSV</button>`;
+  actions.innerHTML = `<button type="button" id="cmp-export-csv" class="inp-btn" hidden>Export comparison CSV</button>`;
   content.prepend(actions);
 
   actions.querySelector('#cmp-export-csv')?.addEventListener('click', () => {
@@ -96,25 +96,25 @@ async function _runComparison(processes, refs, memConfig, procKey, pageKey) {
   const loading = document.getElementById('cmp-loading');
   const content = document.getElementById('cmp-content');
 
-  _setLoadingText('Ejecutando algoritmos de scheduling…');
+  _setLoadingText('Running scheduling algorithms…');
 
   const schedulingComparisons = [];
   for (const config of DEFAULT_SCHEDULING_CONFIGS) {
     await _yield();
-    _setLoadingText(`Ejecutando ${config.algorithm}…`);
+    _setLoadingText(`Running ${config.algorithm}…`);
     try {
       const { schedulingComparisons: sc } = compareScheduling(processes, [config]);
       if (sc && sc.length > 0) schedulingComparisons.push(sc[0]);
     } catch (_) { /* skip */ }
   }
 
-  _setLoadingText('Ejecutando algoritmos de paginación…');
+  _setLoadingText('Running page replacement algorithms…');
   let pageResult = { pageReplacementComparisons: [] };
 
   if (refs && refs.length > 0 && memConfig && memConfig.numFrames > 0) {
     for (const algo of ALL_PAGE_ALGORITHMS) {
       await _yield();
-      _setLoadingText(`Ejecutando ${algo}…`);
+      _setLoadingText(`Running ${algo}…`);
       try {
         const { pageReplacementComparisons: pc } = comparePageReplacement(memConfig.numFrames, refs, [algo]);
         if (pc && pc.length > 0) pageResult.pageReplacementComparisons.push(pc[0]);
@@ -139,7 +139,7 @@ async function _runComparison(processes, refs, memConfig, procKey, pageKey) {
   _setComparisonExportVisible(schedulingComparisons.length > 0);
 
   const totalAlgos = schedulingComparisons.length + pageResult.pageReplacementComparisons.length;
-  toast(`Comparación completa — ${totalAlgos} algoritmos evaluados.`, 'ok');
+  toast(`Comparison complete — ${totalAlgos} algorithms evaluated.`, 'ok');
 }
 
 function _yield() {
@@ -159,19 +159,23 @@ function _drawCharts(result) {
 
 function _drawSchedulingChart(comparisons) {
   const canvas = document.getElementById('cmp-sched-chart');
+  const insight = document.getElementById('cmp-sched-insight');
   if (!canvas) return;
   canvas.width  = canvas.parentElement.clientWidth || 800;
-  canvas.height = 320;
+  canvas.height = 360;
   const ctx = canvas.getContext('2d');
   renderSchedulingComparisonChart(ctx, comparisons);
+  _renderSchedulingInsight(insight, comparisons);
 }
 
 function _drawPageChart(comparisons) {
   const canvas = document.getElementById('cmp-page-chart');
+  const insight = document.getElementById('cmp-page-insight');
   if (!canvas) return;
 
   if (!comparisons || comparisons.length === 0) {
     canvas.parentElement.style.display = 'none';
+    if (insight) insight.textContent = '';
     return;
   }
   canvas.parentElement.style.display = '';
@@ -179,6 +183,71 @@ function _drawPageChart(comparisons) {
   canvas.height = 240;
   const ctx = canvas.getContext('2d');
   renderPageReplacementComparisonChart(ctx, comparisons);
+  _renderPageInsight(insight, comparisons);
+}
+
+function _renderPageInsight(element, comparisons) {
+  if (!element) return;
+  const faults = comparisons.map(item => item.totalFaults);
+  const minFaults = Math.min(...faults);
+  const maxFaults = Math.max(...faults);
+  const allEqual = minFaults === maxFaults;
+  const allZeroHit = comparisons.every(item => item.hitRate === 0);
+
+  if (allEqual) {
+    element.textContent = allZeroHit
+      ? `Tie en page faults: todos produjeron ${minFaults} page faults y 0% hit rate. Es normal si la reference string no reutiliza pages dentro de los frames disponibles.`
+      : `Tie en page faults: todos produjeron ${minFaults} page faults con esta reference string; revisa el hit rate para ver si hubo reutilización.`;
+    return;
+  }
+
+  const best = comparisons
+    .filter(item => item.totalFaults === minFaults)
+    .map(item => item.algorithm)
+    .join(', ');
+  const worst = comparisons
+    .filter(item => item.totalFaults === maxFaults)
+    .map(item => item.algorithm)
+    .join(', ');
+  element.textContent = `Best page replacement: ${best} con ${minFaults} page faults. Más alto: ${worst} con ${maxFaults}; la diferencia muestra cuánto ayudó la política de reemplazo.`;
+}
+
+function _renderSchedulingInsight(element, comparisons) {
+  if (!element) return;
+  if (!comparisons || comparisons.length === 0) {
+    element.textContent = '';
+    return;
+  }
+
+  const bestTat = _bestByMetric(comparisons, 'avgTurnaroundTime');
+  const bestWt = _bestByMetric(comparisons, 'avgWaitingTime');
+  const bestRt = _bestByMetric(comparisons, 'avgResponseTime');
+  const sameWinner = bestTat.algorithms === bestWt.algorithms && bestWt.algorithms === bestRt.algorithms;
+
+  if (sameWinner) {
+    element.textContent = bestTat.count > 1
+      ? `Empate en las tres métricas principales: ${bestTat.algorithms} comparten el menor Avg TAT, Avg WT y Avg RT.`
+      : `${bestTat.algorithms} domina esta corrida: tiene el menor Avg TAT, Avg WT y Avg RT.`;
+    return;
+  }
+
+  element.textContent =
+    `Lectura rápida: ${bestTat.algorithms} minimiza Avg TAT (${bestTat.value}), ` +
+    `${bestWt.algorithms} minimiza Avg WT (${bestWt.value}) y ` +
+    `${bestRt.algorithms} minimiza Avg RT (${bestRt.value}). ` +
+    `Si una estrella aparece en varias barras, hay empate en esa métrica.`;
+}
+
+function _bestByMetric(comparisons, key) {
+  const minValue = Math.min(...comparisons.map(item => item.metrics[key] ?? Infinity));
+  const winners = comparisons
+    .filter(item => item.metrics[key] === minValue)
+    .map(item => item.algorithm);
+  return {
+    algorithms: winners.join(', '),
+    count: winners.length,
+    value: minValue.toFixed(2),
+  };
 }
 
 function _renderBestSummary(result) {
@@ -198,19 +267,19 @@ function _renderBestSummary(result) {
     const bestWT  = sc.reduce((a, b) => a.metrics.avgWaitingTime    <= b.metrics.avgWaitingTime    ? a : b);
     const bestRT  = sc.reduce((a, b) => a.metrics.avgResponseTime   <= b.metrics.avgResponseTime   ? a : b);
 
-    items.push({ label: 'Mejor TAT promedio', algo: bestTAT.algorithm, val: bestTAT.metrics.avgTurnaroundTime.toFixed(2) });
-    items.push({ label: 'Mejor WT promedio',  algo: bestWT.algorithm,  val: bestWT.metrics.avgWaitingTime.toFixed(2)    });
-    items.push({ label: 'Mejor RT promedio',  algo: bestRT.algorithm,  val: bestRT.metrics.avgResponseTime.toFixed(2)   });
+    items.push({ label: 'Best Avg TAT', algo: bestTAT.algorithm, val: bestTAT.metrics.avgTurnaroundTime.toFixed(2) });
+    items.push({ label: 'Best Avg WT',  algo: bestWT.algorithm,  val: bestWT.metrics.avgWaitingTime.toFixed(2)    });
+    items.push({ label: 'Best Avg RT',  algo: bestRT.algorithm,  val: bestRT.metrics.avgResponseTime.toFixed(2)   });
   }
 
   if (pc && pc.length > 0) {
     const bestFaults = pc.reduce((a, b) => a.totalFaults <= b.totalFaults ? a : b);
-    items.push({ label: 'Menos fallos de página', algo: bestFaults.algorithm, val: String(bestFaults.totalFaults) });
+    items.push({ label: 'Fewest page faults', algo: bestFaults.algorithm, val: String(bestFaults.totalFaults) });
   }
 
   const title = document.createElement('div');
   title.className = 'cmp-best-title';
-  title.textContent = '★ Mejores resultados';
+  title.textContent = '★ Best results';
   el.appendChild(title);
 
   const grid = document.createElement('div');

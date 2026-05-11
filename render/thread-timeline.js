@@ -123,7 +123,7 @@ export function renderThreadTimeline(container, {
   if (timeline.length === 0 || threads.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'tm-timeline-empty';
-    empty.textContent = 'Ejecuta la simulacion para ver la asignacion.';
+    empty.textContent = 'Ejecuta la simulación para ver la asignación.';
     container.appendChild(empty);
     return;
   }

@@ -45,12 +45,12 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
   const summary = document.createElement('div');
   summary.className = 'mem-summary';
   summary.innerHTML =
-    `<span title="Memoria fisica total">Memoria total: <b>${totalMemory} KB</b></span>` +
-    `<span title="Tamano de cada pagina/marco">Tamano pagina: <b>${pageSize} KB</b></span>` +
-    `<span title="Numero de marcos fisicos = totalMemory / pageSize">Marcos: <b>${numFrames}</b></span>` +
-    `<span title="Marcos asignados a algun proceso">Ocupados: <b>${usedFrames}</b> (${usedPercent}%)</span>` +
-    `<span title="Marcos libres disponibles">Libres: <b>${freeFrames}</b></span>` +
-    `<span class="mem-summary-frag" title="Bytes desperdiciados al final del ultimo marco de cada proceso">Fragmentacion interna: <b>${internalFragmentation} B</b></span>`;
+    `<span title="Memoria física total">Memoria total: <b>${totalMemory} KB</b></span>` +
+    `<span title="Tamaño de cada página/frame">Page size: <b>${pageSize} KB</b></span>` +
+    `<span title="Número de frames físicos = totalMemory / pageSize">Frames: <b>${numFrames}</b></span>` +
+    `<span title="Frames asignados a algún proceso">Ocupados: <b>${usedFrames}</b> (${usedPercent}%)</span>` +
+    `<span title="Frames libres disponibles">Libres: <b>${freeFrames}</b></span>` +
+    `<span class="mem-summary-frag" title="Bytes desperdiciados al final del último frame de cada proceso">Fragmentación interna: <b>${internalFragmentation} B</b></span>`;
   container.appendChild(summary);
 
   if (pids.length > 0) {
@@ -61,10 +61,10 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
       const label = labelForPid(pid);
       const pill = document.createElement('span');
       pill.className = 'mem-pid-pill';
-      pill.title = `${label} ocupa ${pageCount} marco(s) fisicos o COW`;
+      pill.title = `${label} ocupa ${pageCount} frame(s) físicos o COW`;
       pill.innerHTML =
         `<span class="mem-pid-pill-swatch" style="background:${colorMap.get(pid)}"></span>` +
-        `${label} - ${pageCount} marco${pageCount !== 1 ? 's' : ''}`;
+        `${label} - ${pageCount} frame${pageCount !== 1 ? 's' : ''}`;
       pidsList.appendChild(pill);
     }
     container.appendChild(pidsList);
@@ -79,7 +79,7 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
 
     if (frame.ownerPid === null) {
       cell.classList.add('mem-frame--empty');
-      cell.title = `Marco ${frame.frameIndex} - libre`;
+      cell.title = `Frame ${frame.frameIndex} - libre`;
       cell.innerHTML =
         `<span class="mem-fr-num">F${frame.frameIndex}</span>` +
         `<span class="mem-fr-label">libre</span>`;
@@ -102,7 +102,7 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
         ? [frame.ownerPid, ...sharedWith].sort((a, b) => a - b).map(labelForPid).join('/')
         : labelForPid(frame.ownerPid);
       const cowTitle = frame.cow?.isCow
-        ? ` Pagina compartida COW con ${sharedWith.map(labelForPid).join(', ')}.`
+        ? ` Página compartida COW con ${sharedWith.map(labelForPid).join(', ')}.`
         : '';
       const writerPid = frame.cow?.isCow
         ? (sharedWith[0] ?? frame.ownerPid)
@@ -110,20 +110,20 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
       const version = Number(frame.contentVersion || 0);
       const cowWriteBlocked = frame.cow?.isCow && !canMaterializeCow;
       const writeTitle = cowWriteBlocked
-        ? 'No hay marcos libres para crear una copia privada COW.'
-        : `Escribir en pagina ${frame.pageNumber}`;
+        ? 'No hay frames libres para crear una copia privada COW.'
+        : `Escribir en página ${frame.pageNumber}`;
 
       cell.title =
-        `Marco ${frame.frameIndex} -> ${displayPids}, pagina ${frame.pageNumber}.` +
+        `Frame ${frame.frameIndex} -> ${displayPids}, página ${frame.pageNumber}.` +
         cowTitle +
-        (isLast ? ' Ultimo marco, posible fragmentacion interna.' : '');
+        (isLast ? ' Último frame, posible fragmentación interna.' : '');
       cell.innerHTML =
         `<span class="mem-fr-num">F${frame.frameIndex}</span>` +
         `<span class="mem-fr-pid">${displayPids}</span>` +
-        `<span class="mem-fr-pg">pagina #${frame.pageNumber}</span>` +
+        `<span class="mem-fr-pg">page #${frame.pageNumber}</span>` +
         (version > 0 ? `<span class="mem-fr-ver">v${version}</span>` : '') +
         (frame.cow?.isCow ? `<span class="mem-fr-cow-lock" aria-label="COW lock">&#128274;</span>` : '') +
-        `<button class="mem-write-btn" type="button" data-pid="${writerPid}" data-page="${frame.pageNumber}" title="${writeTitle}"${cowWriteBlocked ? ' disabled' : ''}>${cowWriteBlocked ? 'Sin marco' : 'Escribir'}</button>` +
+        `<button class="mem-write-btn" type="button" data-pid="${writerPid}" data-page="${frame.pageNumber}" title="${writeTitle}"${cowWriteBlocked ? ' disabled' : ''}>${cowWriteBlocked ? 'Sin frame' : 'Escribir'}</button>` +
         (isLast ? `<span class="mem-fr-frag-badge">frag</span>` : '');
     }
 
@@ -134,7 +134,7 @@ export function renderMemoryGrid(container, memoryState, config, options = {}) {
   const legend = document.createElement('div');
   legend.className = 'mem-legend';
   legend.innerHTML =
-    `<span class="mem-legend-item"><span class="mem-legend-swatch" style="background:var(--bg-elevated);border:1px dashed var(--border-default);"></span>Marco libre</span>` +
+    `<span class="mem-legend-item"><span class="mem-legend-swatch" style="background:var(--bg-elevated);border:1px dashed var(--border-default);"></span>Frame libre</span>` +
     `<span class="mem-legend-item"><span class="mem-legend-swatch mem-legend-swatch--frag"></span>Frag. interna</span>` +
     `<span class="mem-legend-item"><span class="mem-legend-swatch mem-legend-swatch--cow"></span>COW compartida</span>`;
   container.appendChild(legend);
