@@ -3,11 +3,13 @@
 
 import { AppState }            from '../app.js';
 import { compareScheduling, comparePageReplacement, DEFAULT_SCHEDULING_CONFIGS, ALL_PAGE_ALGORITHMS } from '../engine/comparison.js';
+import { buildComparisonCSV, downloadCSV } from '../engine/csv-export.js';
 import { renderSchedulingComparisonChart, renderPageReplacementComparisonChart } from '../render/comparison-chart.js';
 import { toast, navigateTo }   from '../render/ui-feedback.js';
 
 export function initComparisonScreen() {
   document.querySelector('[data-tab="comparison"]')?.addEventListener('click', _onTabActivated);
+  _ensureComparisonExportButton();
 
   // Wire the no-data link to navigate to input
   const noData = document.getElementById('cmp-no-data');
@@ -23,6 +25,33 @@ let _lastProcKey  = '';
 let _lastPageKey  = '';
 let _running      = false;
 
+function _timestampForFilename() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function _ensureComparisonExportButton() {
+  const content = document.getElementById('cmp-content');
+  if (!content || document.getElementById('cmp-export-csv')) return;
+
+  const actions = document.createElement('div');
+  actions.className = 'cmp-export-actions';
+  actions.style.marginTop = 'var(--space-4)';
+  actions.innerHTML = `<button type="button" id="cmp-export-csv" class="inp-btn" hidden>Exportar comparación CSV</button>`;
+  content.prepend(actions);
+
+  actions.querySelector('#cmp-export-csv')?.addEventListener('click', () => {
+    const comparisons = AppState.comparisonResult?.schedulingComparisons || [];
+    if (!comparisons.length) return;
+    const csv = buildComparisonCSV(comparisons);
+    downloadCSV(csv, `coreview-comparison-${_timestampForFilename()}.csv`);
+  });
+}
+
+function _setComparisonExportVisible(visible) {
+  const button = document.getElementById('cmp-export-csv');
+  if (button) button.hidden = !visible;
+}
+
 function _onTabActivated() {
   const procKey = JSON.stringify(AppState.processes);
   const pageKey = JSON.stringify({ refs: AppState.referenceString, cfg: AppState.memoryConfig });
@@ -35,6 +64,7 @@ function _onTabActivated() {
     noData.style.display  = '';
     content.style.display = 'none';
     loading.style.display = 'none';
+    _setComparisonExportVisible(false);
     return;
   }
 
@@ -48,6 +78,7 @@ function _onTabActivated() {
     content.style.display = '';
     loading.style.display = 'none';
     _drawCharts(AppState.comparisonResult);
+    _setComparisonExportVisible((AppState.comparisonResult.schedulingComparisons || []).length > 0);
     return;
   }
 
@@ -55,6 +86,7 @@ function _onTabActivated() {
 
   content.style.display = 'none';
   loading.style.display = '';
+  _setComparisonExportVisible(false);
   _runComparison(AppState.processes, AppState.referenceString, AppState.memoryConfig, procKey, pageKey);
 }
 
@@ -104,6 +136,7 @@ async function _runComparison(processes, refs, memConfig, procKey, pageKey) {
   if (loading) loading.style.display = 'none';
   if (content) content.style.display = '';
   _drawCharts(result);
+  _setComparisonExportVisible(schedulingComparisons.length > 0);
 
   const totalAlgos = schedulingComparisons.length + pageResult.pageReplacementComparisons.length;
   toast(`Comparación completa — ${totalAlgos} algoritmos evaluados.`, 'ok');

@@ -3,12 +3,18 @@
 
 import {
   parseProcessesFromForm,
-  parseProcessesFromFile,
+  parseProcessesFromFileValidated,
   parseMemoryConfig,
   validateProcesses,
   generateReferenceString,
 } from '../data.js';
 import { AppState } from '../app.js';
+import {
+  cloneProcessMetadata,
+  getProcessTable,
+  setProcessTable,
+  simulatedFork,
+} from '../engine/process-model.js';
 import { toast, setAppStatus, navigateTo } from '../render/ui-feedback.js';
 
 // Hard limits to prevent absurd inputs and catastrophic UI.
@@ -23,15 +29,21 @@ const LIMITS = {
   pageSize:   { min: 1,  max: 1024 },
   processes:  { min: 1, max: 16 },
 };
+const IMPORT_ROW_DELAY_MS = 60;
 
 // Auto-incrementing PID counter for the session; never resets on clear (keeps uniqueness).
 let _nextPid = 1;
 // Map<pid, { localTidCounter: number }>
 const _procMeta = new Map();
+const _forkMetaByPid = new Map();
+let _loadedFileCount = 0;
+let _importRenderToken = 0;
 
 export function initInputScreen() {
   const root = document.querySelector('[data-screen="input"]');
   if (!root) return;
+
+  _ensureForkStyles();
 
   root.innerHTML = `
     <h2>Entrada de procesos</h2>
@@ -94,10 +106,12 @@ export function initInputScreen() {
       <div class="inp-toolbar">
         <button id="inp-add-process" class="inp-btn">+ Agregar proceso</button>
         <label class="inp-btn" for="inp-file-upload" style="cursor:pointer">📂 Subir .txt</label>
+        <label class="inp-btn" id="inp-load-another-file" for="inp-file-upload" style="cursor:pointer" hidden>Cargar otro archivo</label>
         <input type="file" id="inp-file-upload" accept=".txt,.csv" style="display:none">
         <button id="inp-load-example" class="inp-btn">Cargar ejemplo</button>
         <button id="inp-clear-all" class="inp-btn inp-btn-outline-danger">Limpiar todo</button>
       </div>
+      <div id="inp-file-summary" class="inp-file-summary" hidden></div>
       <div id="inp-file-error" class="inp-error" hidden></div>
       <table class="inp-table" id="inp-process-table">
         <thead>
@@ -176,6 +190,71 @@ export function initInputScreen() {
   _addProcessRow();
 }
 
+function _ensureForkStyles() {
+  if (document.getElementById('input-fork-styles')) return;
+
+  const style = document.createElement('style');
+  style.id = 'input-fork-styles';
+  style.textContent = `
+    [data-screen="input"] .inp-row-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    [data-screen="input"] .inp-file-summary {
+      margin-top: var(--space-2);
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-family: var(--font-mono);
+    }
+
+    [data-screen="input"] .process-row-entering {
+      opacity: 0;
+      transform: translateY(-4px);
+      animation: process-fade-in 0.3s ease-out forwards;
+    }
+
+    @keyframes process-fade-in {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    [data-screen="input"] .inp-proc-row--fork-child > td {
+      background: var(--bg-elevated);
+    }
+
+    [data-screen="input"] .inp-proc-row--fork-child .inp-pid-cell {
+      padding-left: var(--space-6);
+      border-left: 2px solid var(--accent);
+    }
+
+    [data-screen="input"] .inp-pid-main {
+      display: block;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    [data-screen="input"] .inp-pid-sub {
+      display: block;
+      margin-top: 2px;
+      color: var(--text-tertiary);
+      font-family: var(--font-ui);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.2;
+      text-transform: none;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 // ─── Bound clamp helper ──────────────────────────────────────────────────────
 
 function _clampInput(input, bounds) {
@@ -222,7 +301,12 @@ function _addProcessRow() {
       <button class="inp-btn-sm inp-toggle-threads" data-pid="${pid}" hidden>▼ 0 threads</button>
       <button class="inp-btn-sm inp-add-thread" data-pid="${pid}">+ Thread</button>
     </td>
-    <td><button class="inp-btn-sm inp-btn-danger inp-del-proc" data-pid="${pid}" title="Eliminar proceso">×</button></td>
+    <td>
+      <div class="inp-row-actions">
+        <button class="inp-btn-sm inp-fork-proc" data-pid="${pid}" title="Simular fork()">Fork</button>
+        <button class="inp-btn-sm inp-btn-danger inp-del-proc" data-pid="${pid}" title="Eliminar proceso">×</button>
+      </div>
+    </td>
   `;
   tbody.appendChild(tr);
 
@@ -231,6 +315,7 @@ function _addProcessRow() {
 
   // Wire delete + thread buttons
   tr.querySelector('.inp-del-proc').addEventListener('click', () => _deleteProcess(pid));
+  tr.querySelector('.inp-fork-proc').addEventListener('click', () => _forkProcess(pid));
   tr.querySelector('.inp-add-thread').addEventListener('click', () => _addThreadRow(pid));
   tr.querySelector('.inp-toggle-threads').addEventListener('click', () => _toggleThreads(pid));
 
@@ -261,15 +346,66 @@ function _deleteProcess(pid) {
   document.querySelector(`.inp-proc-row[data-pid="${pid}"]`)?.remove();
   document.querySelector(`.inp-thread-container[data-parent-pid="${pid}"]`)?.remove();
   _procMeta.delete(pid);
+  _forkMetaByPid.delete(pid);
+  _updateLoadedFilesUI();
 }
 
 function _clearAll() {
+  _importRenderToken += 1;
   document.getElementById('inp-tbody').innerHTML = '';
   _procMeta.clear();
+  _forkMetaByPid.clear();
+  _loadedFileCount = 0;
   document.getElementById('inp-proc-errors').hidden = true;
   document.getElementById('inp-file-error').hidden = true;
+  document.getElementById('inp-file-error').innerHTML = '';
+  _updateLoadedFilesUI(0);
   _addProcessRow();
   toast('Procesos limpiados.', 'info', 1800);
+}
+
+function _processRowCount() {
+  return document.querySelectorAll('.inp-proc-row').length;
+}
+
+function _maxCurrentPid() {
+  return Math.max(0, ...[...document.querySelectorAll('.inp-proc-row')]
+    .map(row => Number(row.dataset.pid))
+    .filter(Number.isFinite));
+}
+
+function _updateLoadedFilesUI(processCount = _processRowCount()) {
+  const summary = document.getElementById('inp-file-summary');
+  const loadAnother = document.getElementById('inp-load-another-file');
+  if (!summary || !loadAnother) return;
+
+  const hasLoadedFiles = _loadedFileCount > 0;
+  loadAnother.hidden = !hasLoadedFiles;
+  summary.hidden = !hasLoadedFiles;
+  if (hasLoadedFiles) {
+    const fileWord = _loadedFileCount === 1 ? 'archivo' : 'archivos';
+    summary.textContent = `Cargado de ${_loadedFileCount} ${fileWord}: ${processCount} procesos totales`;
+  } else {
+    summary.textContent = '';
+  }
+}
+
+function _cloneImportedProcess(proc, newPid) {
+  const copy = JSON.parse(JSON.stringify(proc));
+  copy.pid = newPid;
+  if (Array.isArray(copy.threads)) {
+    copy.threads = copy.threads.map(thread => ({
+      ...thread,
+      parentPid: newPid,
+    }));
+  }
+  return copy;
+}
+
+function _prepareImportedProcesses(processes, shouldRenumber) {
+  if (!shouldRenumber) return processes.map(proc => _cloneImportedProcess(proc, proc.pid));
+  let nextPid = _maxCurrentPid() + 1;
+  return processes.map(proc => _cloneImportedProcess(proc, nextPid++));
 }
 
 // ─── Thread sub-rows ─────────────────────────────────────────────────────────
@@ -374,6 +510,194 @@ function _toggleThreads(pid) {
 
 // ─── Memory config ────────────────────────────────────────────────────────────
 
+function _cloneMetaValue(value) {
+  return value ? JSON.parse(JSON.stringify(value)) : value;
+}
+
+function _applyForkMetadata(processes) {
+  for (const process of processes) {
+    const meta = _forkMetaByPid.get(process.pid);
+    if (!meta) continue;
+
+    if (meta.isForkChild) process.isForkChild = true;
+    if (meta.forkParentPid !== null && meta.forkParentPid !== undefined) {
+      process.forkParentPid = meta.forkParentPid;
+    }
+    if (meta.forkLabel) process.forkLabel = meta.forkLabel;
+    if (Array.isArray(meta.forkChildrenPids)) {
+      process.forkChildrenPids = meta.forkChildrenPids.slice();
+    }
+    if (meta.memory) {
+      process.memory = _cloneMetaValue(meta.memory);
+      if (Array.isArray(process.memory.cowPages)) {
+        process.memory.cowPages = process.memory.cowPages
+          .filter(entry => entry.pageNumber < process.numPages);
+      }
+    }
+  }
+}
+
+function _syncForkMetadataFromProcesses(processes) {
+  for (const process of processes) {
+    const meta = cloneProcessMetadata(process);
+    if (meta.isForkChild || meta.forkChildrenPids.length > 0 || meta.memory) {
+      _forkMetaByPid.set(process.pid, meta);
+    }
+  }
+}
+
+function _parentHasExplicitThreads(parentPid) {
+  const threadList = document.querySelector(`.inp-thread-list[data-pid="${parentPid}"]`);
+  return Boolean(threadList && threadList.querySelector('.inp-thread-row'));
+}
+
+function _findForkInsertionPoint(parentPid) {
+  const tbody = document.getElementById('inp-tbody');
+  let insertionPoint = document.querySelector(`.inp-thread-container[data-parent-pid="${parentPid}"]`)
+    || document.querySelector(`.inp-proc-row[data-pid="${parentPid}"]`);
+
+  for (const row of [...tbody.querySelectorAll('.inp-proc-row')]) {
+    if (Number(row.dataset.forkParentPid) !== parentPid) continue;
+    const childContainer = document.querySelector(`.inp-thread-container[data-parent-pid="${row.dataset.pid}"]`);
+    insertionPoint = childContainer || row;
+  }
+
+  return insertionPoint;
+}
+
+function _makePidCell(proc) {
+  if (!proc.isForkChild) return `P${proc.pid}`;
+  const label = proc.forkLabel || `P${proc.pid}`;
+  const parentLabel = _forkMetaByPid.get(proc.forkParentPid)?.forkLabel || `P${proc.forkParentPid}`;
+  return (
+    `<span class="inp-pid-main">${label}</span>` +
+    `<span class="inp-pid-sub">child of ${parentLabel} · PID ${proc.pid}</span>`
+  );
+}
+
+function _insertProcessFromModel(proc, { showThreads = false, afterNode = null } = {}) {
+  const tbody = document.getElementById('inp-tbody');
+  const hasThreads = showThreads && proc.threads.length > 0;
+  _procMeta.set(proc.pid, { localTidCounter: hasThreads ? proc.threads.length : 0 });
+
+  const tr = document.createElement('tr');
+  tr.className = `inp-proc-row${proc.isForkChild ? ' inp-proc-row--fork-child' : ''}`;
+  tr.dataset.pid = proc.pid;
+  if (proc.forkParentPid !== undefined && proc.forkParentPid !== null) {
+    tr.dataset.forkParentPid = proc.forkParentPid;
+  }
+  tr.innerHTML = `
+    <td class="inp-pid-cell">${_makePidCell(proc)}</td>
+    <td><input type="number" class="inp-num inp-arrival"
+        min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="${proc.arrivalTime}"></td>
+    <td><input type="number" class="inp-num inp-burst${hasThreads ? ' inp-readonly' : ''}"
+        min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${proc.burstTime}"${hasThreads ? ' readonly' : ''}></td>
+    <td><input type="number" class="inp-num inp-priority"
+        min="${LIMITS.priority.min}" max="${LIMITS.priority.max}" value="${proc.priority}"></td>
+    <td><input type="number" class="inp-num inp-shared"
+        min="${LIMITS.shared.min}" max="${LIMITS.shared.max}" value="${proc.sharedPages}"></td>
+    <td class="inp-thread-cell">
+      <button class="inp-btn-sm inp-toggle-threads" data-pid="${proc.pid}"${hasThreads ? '' : ' hidden'}>â–¼ ${proc.threads.length} thread${proc.threads.length !== 1 ? 's' : ''}</button>
+      <button class="inp-btn-sm inp-add-thread" data-pid="${proc.pid}">+ Thread</button>
+    </td>
+    <td>
+      <div class="inp-row-actions">
+        <button class="inp-btn-sm inp-fork-proc" data-pid="${proc.pid}" title="Simular fork()">Fork</button>
+        <button class="inp-btn-sm inp-btn-danger inp-del-proc" data-pid="${proc.pid}" title="Eliminar proceso">×</button>
+      </div>
+    </td>
+  `;
+
+  const containerTr = _makeThreadContainer(proc.pid);
+  containerTr.hidden = !hasThreads;
+
+  if (afterNode) {
+    afterNode.after(tr);
+    tr.after(containerTr);
+  } else {
+    tbody.appendChild(tr);
+    tbody.appendChild(containerTr);
+  }
+
+  tr.querySelector('.inp-del-proc').addEventListener('click', () => _deleteProcess(proc.pid));
+  tr.querySelector('.inp-fork-proc').addEventListener('click', () => _forkProcess(proc.pid));
+  tr.querySelector('.inp-add-thread').addEventListener('click', () => _addThreadRow(proc.pid));
+  tr.querySelector('.inp-toggle-threads').addEventListener('click', () => _toggleThreads(proc.pid));
+
+  _attachClamp(tr.querySelector('.inp-arrival'),  LIMITS.arrival);
+  _attachClamp(tr.querySelector('.inp-burst'),    LIMITS.burst);
+  _attachClamp(tr.querySelector('.inp-priority'), LIMITS.priority);
+  _attachClamp(tr.querySelector('.inp-shared'),   LIMITS.shared);
+
+  if (hasThreads) {
+    const threadList = containerTr.querySelector('.inp-thread-list');
+    proc.threads.forEach((thread, index) => {
+      const localTid = index + 1;
+      const div = document.createElement('div');
+      div.className = 'inp-thread-row';
+      div.dataset.pid = proc.pid;
+      div.dataset.localTid = localTid;
+      div.innerHTML = `
+        <span class="inp-thread-label">T${localTid}</span>
+        <input type="number" class="inp-num inp-t-arrival"
+          min="${LIMITS.arrival.min}" max="${LIMITS.arrival.max}" value="${thread.arrivalTime}" title="Thread arrival">
+        <input type="number" class="inp-num inp-t-burst"
+          min="${LIMITS.burst.min}" max="${LIMITS.burst.max}" value="${thread.burstTime}" title="Thread burst">
+        <input type="number" class="inp-num inp-t-stack"
+          min="${LIMITS.stackPages.min}" max="${LIMITS.stackPages.max}" value="${thread.stackPages}" title="Stack pages">
+        <button class="inp-btn-sm inp-btn-danger inp-del-thread" title="Eliminar thread">×</button>
+      `;
+      threadList.appendChild(div);
+
+      div.querySelector('.inp-del-thread').addEventListener('click', () => {
+        div.remove();
+        _syncBurst(proc.pid);
+        _syncToggle(proc.pid);
+      });
+      div.querySelector('.inp-t-burst').addEventListener('input', () => _syncBurst(proc.pid));
+
+      _attachClamp(div.querySelector('.inp-t-arrival'), LIMITS.arrival);
+      _attachClamp(div.querySelector('.inp-t-burst'),   LIMITS.burst);
+      _attachClamp(div.querySelector('.inp-t-stack'),   LIMITS.stackPages);
+    });
+  }
+
+  return { tr, containerTr };
+}
+
+function _parseCurrentProcessesForFork() {
+  const fd = new FormData();
+  fd.set('processes', JSON.stringify(_collectRawProcesses()));
+  const processes = parseProcessesFromForm(fd);
+  _applyForkMetadata(processes);
+  return processes;
+}
+
+function _forkProcess(parentPid) {
+  const procCount = document.querySelectorAll('.inp-proc-row').length;
+  if (procCount >= LIMITS.processes.max) {
+    toast(`Máximo ${LIMITS.processes.max} procesos por simulación.`, 'warn');
+    return;
+  }
+
+  try {
+    const processes = _parseCurrentProcessesForFork();
+    setProcessTable(processes);
+    const child = simulatedFork(parentPid);
+    _syncForkMetadataFromProcesses(getProcessTable());
+
+    const afterNode = _findForkInsertionPoint(parentPid);
+    _insertProcessFromModel(child, {
+      showThreads: _parentHasExplicitThreads(parentPid),
+      afterNode,
+    });
+    _nextPid = Math.max(_nextPid, child.pid + 1);
+    toast(`${child.forkLabel || `P${child.pid}`} creado por fork() de P${parentPid}.`, 'ok');
+  } catch (error) {
+    toast(error.message || 'No se pudo simular fork().', 'err');
+  }
+}
+
 function _updateFramesDisplay() {
   const memSizeInput = document.getElementById('inp-mem-size');
   const pageSizeInput = document.getElementById('inp-page-size');
@@ -424,6 +748,46 @@ function _updateFramesDisplay() {
 
 // ─── File upload ──────────────────────────────────────────────────────────────
 
+function _detectProcessFileColumnCount(content) {
+  const rows = content
+    .trim()
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'));
+
+  if (rows.length === 0) return 0;
+  const firstCell = rows[0].split(',')[0].trim().toLowerCase();
+  const dataRows = firstCell === 'pid' ? rows.slice(1) : rows;
+  return dataRows[0] ? dataRows[0].split(',').length : 0;
+}
+
+function _renderFileLoadError(errEl, err) {
+  const message = err?.message || String(err);
+  const lines = message
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.startsWith('Línea ') || line.startsWith('... y '));
+
+  errEl.innerHTML = '';
+  const title = document.createElement('div');
+  title.textContent = message.startsWith('Validación regex falló')
+    ? 'Validación regex falló:'
+    : `Error: ${message}`;
+  errEl.appendChild(title);
+
+  if (lines.length > 0) {
+    const list = document.createElement('ul');
+    for (const line of lines) {
+      const item = document.createElement('li');
+      item.textContent = line;
+      list.appendChild(item);
+    }
+    errEl.appendChild(list);
+  }
+
+  errEl.hidden = false;
+}
+
 function _handleFileUpload(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -443,29 +807,37 @@ function _handleFileUpload(e) {
       const lines = content.trim().split(/\r?\n/).filter(l => l.trim() && !l.trim().startsWith('#'));
       if (!lines.length) throw new Error('El archivo está vacío.');
 
-      const colCount = lines[0].split(',').length;
+      const colCount = _detectProcessFileColumnCount(content);
       if (colCount !== 5 && colCount !== 9) {
         throw new Error(`Se esperaban 5 o 9 columnas, se encontraron ${colCount}. Revisa el formato.`);
       }
 
-      const processes = parseProcessesFromFile(content);
+      const parsedProcesses = parseProcessesFromFileValidated(content);
+      const currentCount = _loadedFileCount === 0 ? 0 : _processRowCount();
+      const totalCount = currentCount + parsedProcesses.length;
 
-      if (processes.length > LIMITS.processes.max) {
-        throw new Error(`El archivo tiene ${processes.length} procesos. Máximo permitido: ${LIMITS.processes.max}.`);
+      if (totalCount > LIMITS.processes.max) {
+        throw new Error(`La carga acumularía ${totalCount} procesos. Máximo permitido: ${LIMITS.processes.max}.`);
       }
 
-      document.getElementById('inp-tbody').innerHTML = '';
-      _procMeta.clear();
-      _nextPid = Math.max(...processes.map(p => p.pid)) + 1;
+      if (_loadedFileCount === 0) {
+        document.getElementById('inp-tbody').innerHTML = '';
+        _procMeta.clear();
+        _forkMetaByPid.clear();
+      }
 
-      _populateFromProcesses(processes, colCount === 9);
+      const processes = _prepareImportedProcesses(parsedProcesses, _loadedFileCount > 0);
+      _nextPid = Math.max(_nextPid, ...processes.map(p => p.pid)) + 1;
+      const renderToken = ++_importRenderToken;
+      _populateFromProcesses(processes, colCount === 9, { incremental: true, token: renderToken });
 
-      errEl.hidden      = true;
-      errEl.textContent = '';
+      _loadedFileCount += 1;
+      _updateLoadedFilesUI(totalCount);
+      errEl.hidden = true;
+      errEl.innerHTML = '';
       toast(`Cargados ${processes.length} procesos desde "${file.name}".`, 'ok');
     } catch (err) {
-      errEl.textContent = `Error: ${err.message}`;
-      errEl.hidden      = false;
+      _renderFileLoadError(errEl, err);
       toast('No se pudo cargar el archivo. Revisa el panel de error.', 'err');
     }
 
@@ -474,7 +846,18 @@ function _handleFileUpload(e) {
   reader.readAsText(file);
 }
 
-function _populateFromProcesses(processes, showThreads) {
+function _populateFromProcesses(processes, showThreads, { incremental = false, animate = false, token = null } = {}) {
+  if (incremental) {
+    const renderToken = token ?? ++_importRenderToken;
+    processes.forEach((proc, index) => {
+      setTimeout(() => {
+        if (renderToken !== _importRenderToken) return;
+        _populateFromProcesses([proc], showThreads, { animate: true, token: renderToken });
+      }, index * IMPORT_ROW_DELAY_MS);
+    });
+    return;
+  }
+
   const tbody = document.getElementById('inp-tbody');
 
   for (const proc of processes) {
@@ -482,7 +865,7 @@ function _populateFromProcesses(processes, showThreads) {
     _procMeta.set(proc.pid, { localTidCounter: hasThreads ? proc.threads.length : 0 });
 
     const tr = document.createElement('tr');
-    tr.className  = 'inp-proc-row';
+    tr.className  = `inp-proc-row${animate ? ' process-row-entering' : ''}`;
     tr.dataset.pid = proc.pid;
     tr.innerHTML = `
       <td class="inp-pid-cell">P${proc.pid}</td>
@@ -498,7 +881,12 @@ function _populateFromProcesses(processes, showThreads) {
         <button class="inp-btn-sm inp-toggle-threads" data-pid="${proc.pid}"${hasThreads ? '' : ' hidden'}>▼ ${proc.threads.length} thread${proc.threads.length !== 1 ? 's' : ''}</button>
         <button class="inp-btn-sm inp-add-thread" data-pid="${proc.pid}">+ Thread</button>
       </td>
-      <td><button class="inp-btn-sm inp-btn-danger inp-del-proc" data-pid="${proc.pid}" title="Eliminar proceso">×</button></td>
+      <td>
+        <div class="inp-row-actions">
+          <button class="inp-btn-sm inp-fork-proc" data-pid="${proc.pid}" title="Simular fork()">Fork</button>
+          <button class="inp-btn-sm inp-btn-danger inp-del-proc" data-pid="${proc.pid}" title="Eliminar proceso">×</button>
+        </div>
+      </td>
     `;
     tbody.appendChild(tr);
 
@@ -507,6 +895,7 @@ function _populateFromProcesses(processes, showThreads) {
     tbody.appendChild(containerTr);
 
     tr.querySelector('.inp-del-proc').addEventListener('click', () => _deleteProcess(proc.pid));
+    tr.querySelector('.inp-fork-proc').addEventListener('click', () => _forkProcess(proc.pid));
     tr.querySelector('.inp-add-thread').addEventListener('click', () => _addThreadRow(proc.pid));
     tr.querySelector('.inp-toggle-threads').addEventListener('click', () => _toggleThreads(proc.pid));
 
@@ -583,6 +972,7 @@ function _downloadTemplate(cols) {
 // ─── Example loader ──────────────────────────────────────────────────────────
 
 function _loadExample() {
+  _importRenderToken += 1;
   const example = [
     { pid: 1, arrivalTime: 0, burstTime: 5, priority: 2, sharedPages: 4, threads: [] },
     { pid: 2, arrivalTime: 1, burstTime: 3, priority: 1, sharedPages: 3, threads: [] },
@@ -591,6 +981,11 @@ function _loadExample() {
 
   document.getElementById('inp-tbody').innerHTML = '';
   _procMeta.clear();
+  _forkMetaByPid.clear();
+  _loadedFileCount = 0;
+  _updateLoadedFilesUI(0);
+  document.getElementById('inp-file-error').hidden = true;
+  document.getElementById('inp-file-error').innerHTML = '';
   _nextPid = 4;
 
   _populateFromProcesses(example, false);
@@ -654,6 +1049,7 @@ function _handleRunSimulation() {
   let processes;
   try {
     processes = parseProcessesFromForm(fd);
+    _applyForkMetadata(processes);
   } catch (err) {
     procErrEl.textContent = `Error de parseo: ${err.message}`;
     procErrEl.hidden      = false;

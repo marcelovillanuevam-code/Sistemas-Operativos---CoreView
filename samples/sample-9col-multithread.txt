@@ -1,0 +1,5 @@
+# 9 columnas: pid,arrival,procBurst,priority,sharedPages,numThreads,
+#             threadArrival,threadBurst,stackPages
+1,0,8,2,1,2,0,5,1
+1,0,8,2,1,2,0,3,1
+2,1,4,1,1,1,1,4,1

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CoreView Worker Test</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Arial, Helvetica, sans-serif;
+        background: #f5f7fb;
+        color: #172033;
+      }
+
+      body {
+        margin: 0;
+        padding: 32px;
+      }
+
+      main {
+        max-width: 840px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        margin: 0 0 16px;
+        font-size: 28px;
+        line-height: 1.2;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      button {
+        border: 1px solid #9aa8bd;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #172033;
+        cursor: pointer;
+        font: inherit;
+        padding: 10px 14px;
+      }
+
+      button:hover {
+        background: #edf2f8;
+      }
+
+      pre {
+        min-height: 320px;
+        margin: 0;
+        overflow: auto;
+        border: 1px solid #c9d4e2;
+        border-radius: 8px;
+        background: #101827;
+        color: #e7eef9;
+        padding: 16px;
+        font: 14px/1.5 Consolas, "Liberation Mono", Menlo, monospace;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>CoreView Worker Test</h1>
+
+      <div class="controls">
+        <button type="button" id="run-button">Run</button>
+        <button type="button" id="preempt-button">Preempt</button>
+        <button type="button" id="terminate-button">Terminate</button>
+        <button type="button" id="new-worker-button">New Worker</button>
+      </div>
+
+      <pre id="log" aria-live="polite"></pre>
+    </main>
+
+    <script>
+      const logElement = document.getElementById('log');
+      const runButton = document.getElementById('run-button');
+      const preemptButton = document.getElementById('preempt-button');
+      const terminateButton = document.getElementById('terminate-button');
+      const newWorkerButton = document.getElementById('new-worker-button');
+
+      let worker = null;
+      let startedAt = 0;
+
+      function log(message) {
+        const elapsedMs = startedAt === 0 ? 0 : Math.round(performance.now() - startedAt);
+        logElement.textContent += `[+${elapsedMs}ms] ${message}\n`;
+        logElement.scrollTop = logElement.scrollHeight;
+      }
+
+      function postToWorker(message) {
+        if (!worker) {
+          log('No active worker');
+          return;
+        }
+
+        worker.postMessage(message);
+        log(`sent ${JSON.stringify(message)}`);
+      }
+
+      function createWorker() {
+        if (worker) {
+          worker.terminate();
+        }
+
+        logElement.textContent = '';
+        startedAt = performance.now();
+        worker = new Worker('engine/thread-worker.js');
+        worker.onmessage = function handleWorkerMessage(event) {
+          log(`received ${JSON.stringify(event.data)}`);
+        };
+        worker.onerror = function handleWorkerError(error) {
+          log(`error ${error.message}`);
+        };
+        worker.postMessage({
+          type: 'init',
+          tid: 1,
+          pid: 101,
+          totalBurst: 5,
+          simSpeedMs: 200
+        });
+        log('created worker with burst=5, simSpeedMs=200');
+      }
+
+      runButton.addEventListener('click', function handleRunClick() {
+        postToWorker({ type: 'run' });
+      });
+
+      preemptButton.addEventListener('click', function handlePreemptClick() {
+        postToWorker({ type: 'preempt' });
+      });
+
+      terminateButton.addEventListener('click', function handleTerminateClick() {
+        postToWorker({ type: 'terminate' });
+        worker = null;
+      });
+
+      newWorkerButton.addEventListener('click', createWorker);
+
+      createWorker();
+    </script>
+  </body>
+</html>

@@ -1,11 +1,10 @@
-// screen-memory.js — Memory screen glue. Reads AppState.processes + memoryConfig,
-// renders MemoryGrid showing frame allocation per process. Sees total numPages only.
+// screen-memory.js - Memory screen glue with copy-on-write fork visualization.
 
-import { AppState }         from '../app.js';
+import { AppState } from '../app.js';
+import { writeProcessPage } from '../engine/process-model.js';
 import { renderMemoryGrid } from '../render/memory-grid.js';
-import { navigateTo }       from '../render/ui-feedback.js';
+import { navigateTo, toast } from '../render/ui-feedback.js';
 
-// Default A1 processes (matches Appendix A.1 — single-threaded)
 const A1_PROCESSES = [
   { pid: 1, arrivalTime: 0, burstTime: 5, priority: 2, sharedPages: 4, numPages: 5,
     threads: [{ tid: 1, parentPid: 1, arrivalTime: 0, burstTime: 5, priority: 2, stackPages: 1 }] },
@@ -17,50 +16,190 @@ const A1_PROCESSES = [
 
 const DEFAULT_CONFIG = { totalMemory: 160, pageSize: 8, numFrames: 20 };
 
-/**
- * Computes MemoryState by allocating processes sequentially into frames.
- */
-function _computeMemoryState(processes, config) {
+let _lastHighlight = null;
+
+function ensureCowStyles() {
+  if (document.getElementById('memory-cow-styles')) return;
+
+  const style = document.createElement('style');
+  style.id = 'memory-cow-styles';
+  style.textContent = `
+    [data-screen="memory"] .mem-frame--cow {
+      border: 3px double var(--text-primary);
+      box-shadow: inset 0 0 0 1px var(--bg-surface);
+    }
+
+    [data-screen="memory"] .mem-fr-cow-lock {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    [data-screen="memory"] .mem-write-btn {
+      margin-top: var(--space-1);
+      max-width: calc(100% - 8px);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-family: var(--font-ui);
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.1;
+      padding: 3px 5px;
+      white-space: normal;
+    }
+
+    [data-screen="memory"] .mem-write-btn:hover {
+      background: var(--bg-elevated);
+    }
+
+    [data-screen="memory"] .mem-fr-ver {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.82);
+      font-family: var(--font-mono);
+      line-height: 1.1;
+    }
+
+    [data-screen="memory"] .mem-frame--cow-new {
+      animation: memCowCopyIn 520ms var(--ease-out);
+    }
+
+    [data-screen="memory"] .mem-frame--written {
+      animation: memPageWrite 420ms var(--ease-out);
+    }
+
+    [data-screen="memory"] .mem-legend-swatch--cow {
+      background: var(--bg-elevated);
+      border: 3px double var(--text-primary);
+    }
+
+    @keyframes memCowCopyIn {
+      from { opacity: 0.25; transform: scale(0.92); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes memPageWrite {
+      0% { transform: scale(1); }
+      45% { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function ensureMemoryModel(process) {
+  if (!process.memory) process.memory = {};
+  if (!Array.isArray(process.memory.cowPages)) process.memory.cowPages = [];
+  if (!process.memory.pageVersions) process.memory.pageVersions = {};
+  if (!Array.isArray(process.memory.materializedCowPages)) {
+    process.memory.materializedCowPages = [];
+  }
+  return process.memory;
+}
+
+function activeCowEntries(process, pageNumber, validPids) {
+  const memory = ensureMemoryModel(process);
+  return memory.cowPages.filter(entry => {
+    if (entry.pageNumber !== pageNumber) return false;
+    if (!validPids.has(entry.originalOwnerPid)) return false;
+    return (entry.sharedWithPids || []).some(pid => validPids.has(pid));
+  });
+}
+
+function pageVersion(process, pageNumber) {
+  return Number(ensureMemoryModel(process).pageVersions[pageNumber] || 0);
+}
+
+function cowSharedPids(entries, validPids) {
+  return [...new Set(entries.flatMap(entry => entry.sharedWithPids || []))]
+    .filter(pid => validPids.has(pid))
+    .sort((a, b) => a - b);
+}
+
+function computeMemoryState(processes, config) {
   const { numFrames, pageSize } = config;
 
-  const frames = Array.from({ length: numFrames }, (_, i) => ({
-    frameIndex: i,
+  const frames = Array.from({ length: numFrames }, (_, index) => ({
+    frameIndex: index,
     ownerPid: null,
     pageNumber: null,
     loadedAt: 0,
   }));
 
-  let framePtr  = 0;
+  const validPids = new Set(processes.map(process => process.pid));
+  let framePtr = 0;
   let totalFrag = 0;
+  let requiredPhysicalPages = 0;
 
-  const sorted = [...processes].sort((a, b) => a.pid - b.pid);
-  for (const proc of sorted) {
-    for (let pg = 0; pg < proc.numPages && framePtr < numFrames; pg++, framePtr++) {
+  const sorted = [...processes].sort((left, right) => left.pid - right.pid);
+  for (const process of sorted) {
+    for (let pageNumber = 0; pageNumber < process.numPages; pageNumber += 1) {
+      const cowEntries = activeCowEntries(process, pageNumber, validPids);
+      const isCowAlias = cowEntries.length > 0 && process.pid !== cowEntries[0].originalOwnerPid;
+      if (isCowAlias) continue;
+
+      requiredPhysicalPages += 1;
+      if (framePtr >= numFrames) continue;
+
+      const sharedWithPids = cowSharedPids(cowEntries, validPids);
       frames[framePtr] = {
         frameIndex: framePtr,
-        ownerPid:   proc.pid,
-        pageNumber: pg,
-        loadedAt:   0,
+        ownerPid: process.pid,
+        pageNumber,
+        loadedAt: 0,
+        contentVersion: pageVersion(process, pageNumber),
+        cow: cowEntries.length > 0 ? {
+          isCow: true,
+          originalOwnerPid: cowEntries[0].originalOwnerPid,
+          groupIds: cowEntries.map(entry => entry.groupId),
+          sharedWithPids,
+        } : null,
       };
+      framePtr += 1;
     }
-    const frag = (pageSize - (proc.burstTime % pageSize)) % pageSize;
+
+    const frag = (pageSize - (process.burstTime % pageSize)) % pageSize;
     totalFrag += frag;
   }
 
-  return { frames, internalFragmentation: totalFrag };
+  return {
+    frames,
+    internalFragmentation: totalFrag,
+    requiredPhysicalPages,
+  };
+}
+
+function hasCowPage(processes, pid, pageNumber) {
+  const process = processes.find(item => item.pid === pid);
+  if (!process) return false;
+  const validPids = new Set(processes.map(item => item.pid));
+  return activeCowEntries(process, pageNumber, validPids).length > 0;
 }
 
 export function initMemoryScreen() {
   const root = document.querySelector('[data-screen="memory"]');
   if (!root) return;
 
+  ensureCowStyles();
+
   root.innerHTML = `
-    <h2>Memoria física</h2>
+    <h2>Memoria fisica</h2>
     <p class="screen-desc">
-      La memoria está dividida en <b>marcos</b> de tamaño fijo. Cada proceso
-      recibe marcos contiguos según su número total de páginas (compartidas +
-      stacks de threads). El último marco de cada proceso puede tener
-      <b>fragmentación interna</b> si no llena el marco completo.
+      La memoria esta dividida en <b>marcos</b> de tamano fijo. Las paginas COW
+      creadas por fork() comparten el mismo marco fisico hasta que una escritura
+      materializa una copia privada.
     </p>
 
     <div id="mem-data-banner"></div>
@@ -69,60 +208,106 @@ export function initMemoryScreen() {
   `;
 
   const container = root.querySelector('#mem-container');
-  const bannerEl  = root.querySelector('#mem-data-banner');
-  const warnEl    = root.querySelector('#mem-warning');
+  const bannerEl = root.querySelector('#mem-data-banner');
+  const warnEl = root.querySelector('#mem-warning');
 
-  function _renderDataBanner(usingDefaults, config) {
+  function renderDataBanner(usingDefaults, config, processes) {
+    const cowCount = processes.reduce((sum, process) =>
+      sum + (process.memory?.cowPages?.length || 0), 0);
+
     if (!usingDefaults) {
       bannerEl.innerHTML =
         `<div class="banner-info">` +
-        `  <span class="banner-icon">●</span>` +
-        `  Mostrando asignación de memoria para tus <b>${AppState.processes.length}</b> proceso(s) — ` +
-        `  <b>${config.totalMemory} KB</b> totales · página de <b>${config.pageSize} KB</b> · ` +
-        `  <b>${config.numFrames}</b> marcos.` +
+        `  <span class="banner-icon">i</span>` +
+        `  Mostrando asignacion de memoria para tus <b>${AppState.processes.length}</b> proceso(s) - ` +
+        `  <b>${config.totalMemory} KB</b> totales · pagina de <b>${config.pageSize} KB</b> · ` +
+        `  <b>${config.numFrames}</b> marcos` +
+        (cowCount > 0 ? ` · <b>${cowCount}</b> enlaces COW` : '') +
         `</div>`;
     } else {
       bannerEl.innerHTML =
         `<div class="banner-info banner-warn">` +
-        `  <span class="banner-icon">⚠</span>` +
+        `  <span class="banner-icon">!</span>` +
         `  Mostrando datos de <b>ejemplo</b>. ` +
-        `  <a href="#" id="mem-goto-input">Ir a Entrada para definir tus procesos y memoria →</a>` +
+        `  <a href="#" id="mem-goto-input">Ir a Entrada para definir tus procesos y memoria</a>` +
         `</div>`;
-      bannerEl.querySelector('#mem-goto-input')?.addEventListener('click', (e) => {
-        e.preventDefault();
+      bannerEl.querySelector('#mem-goto-input')?.addEventListener('click', event => {
+        event.preventDefault();
         navigateTo('input');
       });
     }
   }
 
-  function _renderCapacityWarning(processes, config) {
-    const totalRequiredPages = processes.reduce((s, p) => s + p.numPages, 0);
-    if (totalRequiredPages > config.numFrames) {
-      const overflow = totalRequiredPages - config.numFrames;
+  function renderCapacityWarning(memState, config) {
+    if (memState.requiredPhysicalPages > config.numFrames) {
+      const overflow = memState.requiredPhysicalPages - config.numFrames;
       warnEl.innerHTML =
         `<div class="banner-info banner-warn">` +
-        `  <span class="banner-icon">⚠</span>` +
-        `  Los procesos requieren <b>${totalRequiredPages}</b> páginas totales pero solo hay ` +
-        `  <b>${config.numFrames}</b> marcos disponibles (<b>${overflow}</b> páginas no caben). ` +
-        `  Esto causará fallos de página en el módulo de Paginación.` +
+        `  <span class="banner-icon">!</span>` +
+        `  La asignacion fisica requiere <b>${memState.requiredPhysicalPages}</b> paginas pero solo hay ` +
+        `  <b>${config.numFrames}</b> marcos disponibles (<b>${overflow}</b> paginas no caben).` +
         `</div>`;
     } else {
       warnEl.innerHTML = '';
     }
   }
 
-  function _render() {
+  function activeData() {
     const usingDefaults = !(AppState.processes && AppState.processes.length > 0);
-    const processes = usingDefaults ? A1_PROCESSES : AppState.processes;
-    const config    = AppState.memoryConfig ?? DEFAULT_CONFIG;
-
-    _renderDataBanner(usingDefaults, config);
-    _renderCapacityWarning(processes, config);
-
-    const memState = _computeMemoryState(processes, config);
-    renderMemoryGrid(container, memState, config);
+    return {
+      usingDefaults,
+      processes: usingDefaults ? A1_PROCESSES : AppState.processes,
+      config: AppState.memoryConfig ?? DEFAULT_CONFIG,
+    };
   }
 
-  document.querySelector('[data-tab="memory"]')?.addEventListener('click', _render);
-  _render();
+  function handleWritePage({ pid, pageNumber }) {
+    const { usingDefaults, processes, config } = activeData();
+    if (usingDefaults) {
+      toast('Carga procesos desde Entrada para simular escrituras COW.', 'warn');
+      return;
+    }
+
+    const beforeState = computeMemoryState(processes, config);
+    const isCow = hasCowPage(processes, pid, pageNumber);
+    const freeFrames = beforeState.frames.filter(frame => frame.ownerPid === null).length;
+    if (isCow && freeFrames <= 0) {
+      toast('No hay marcos libres para duplicar la pagina COW.', 'err');
+      return;
+    }
+
+    try {
+      const result = writeProcessPage(processes, pid, pageNumber);
+      _lastHighlight = {
+        pid,
+        pageNumber,
+        kind: result.duplicated ? 'cow-copy' : 'write',
+      };
+      toast(result.duplicated
+        ? `P${pid} duplico pagina ${pageNumber} por COW.`
+        : `P${pid} escribio pagina ${pageNumber}.`, 'ok');
+      render();
+      setTimeout(() => {
+        _lastHighlight = null;
+        render();
+      }, 650);
+    } catch (error) {
+      toast(error.message || 'No se pudo escribir la pagina.', 'err');
+    }
+  }
+
+  function render() {
+    const { usingDefaults, processes, config } = activeData();
+    const memState = computeMemoryState(processes, config);
+
+    renderDataBanner(usingDefaults, config, processes);
+    renderCapacityWarning(memState, config);
+    renderMemoryGrid(container, memState, config, {
+      highlight: _lastHighlight,
+      onWritePage: handleWritePage,
+    });
+  }
+
+  document.querySelector('[data-tab="memory"]')?.addEventListener('click', render);
+  render();
 }

@@ -17,6 +17,7 @@ import { renderStateDiagram }   from '../render/state-diagram.js';
 import { renderMetricsDashboard } from '../render/metrics-dashboard.js';
 import { pidToColor }             from '../render/color-utils.js';
 import { navigateTo }             from '../render/ui-feedback.js';
+import { buildResultsCSV, downloadCSV } from '../engine/csv-export.js';
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,10 @@ const _cache = new Map();
 let _lastProcKey = '';
 let _controller  = null;
 let _prevProcessStates = null;
+
+function _timestampForFilename() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
 
 // ─── Cache helpers ────────────────────────────────────────────────────────────
 
@@ -276,6 +281,7 @@ export function initSchedulingScreen() {
         <span class="help-hint" tabindex="0" data-tooltip="TAT (Turnaround) = CT − Arrival. WT (Waiting) = TAT − Burst. RT (Response) = First Run − Arrival. Menor es mejor. Ver pestaña Glosario para más detalles." data-tooltip-pos="left">?</span>
       </div>
       <div id="sched-metrics"></div>
+      <button type="button" id="sched-export-csv" class="inp-btn" hidden>Exportar CSV</button>
     </div>
   `;
 
@@ -287,6 +293,7 @@ export function initSchedulingScreen() {
   const qlWrap          = root.querySelector('#sched-queue-levels-wrap');
   const qlContainer     = root.querySelector('#sched-queue-levels');
   const metricsContainer= root.querySelector('#sched-metrics');
+  const exportCsvBtn    = root.querySelector('#sched-export-csv');
   const stepDisplay     = root.querySelector('#sched-step-display');
   const stepTotal       = root.querySelector('#sched-step-total');
   const cfgRR           = root.querySelector('#sched-cfg-rr');
@@ -385,6 +392,7 @@ export function initSchedulingScreen() {
     _renderStep(0);
 
     renderMetricsDashboard(metricsContainer, [currentTrace]);
+    exportCsvBtn.hidden = false;
 
     root.querySelector('[data-action="speed"]').value = '1';
   }
@@ -435,6 +443,20 @@ export function initSchedulingScreen() {
   });
   root.querySelector('[data-action="speed"]').addEventListener('change', e => {
     if (_controller) _controller.setSpeed(Number(e.target.value));
+  });
+
+  exportCsvBtn.addEventListener('click', () => {
+    if (!currentTrace || !Array.isArray(currentTrace.threadMetrics)) return;
+    const quantum = currentAlgo === 'RR'
+      ? parseInt(root.querySelector('#sched-quantum').value, 10) || 2
+      : undefined;
+    const csv = buildResultsCSV(currentTrace.threadMetrics, {
+      algorithm: currentAlgo,
+      numCores: 1,
+      quantum,
+      processes: _getProcesses(),
+    });
+    downloadCSV(csv, `coreview-${currentAlgo}-${_timestampForFilename()}.csv`);
   });
 
   document.querySelector('[data-tab="scheduling"]')?.addEventListener('click', () => {

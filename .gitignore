@@ -4,6 +4,8 @@ CLAUDE.md
 claude_code_prompts.md
 *.md
 !README.md
+!docs/
+!docs/*.md
 
 # Claude configuration
 .claude/

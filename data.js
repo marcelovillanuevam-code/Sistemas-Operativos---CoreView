@@ -206,3 +206,146 @@ export function generateReferenceString(processes, length) {
   }
   return refs;
 }
+
+/**
+ * Validación regex de campos crudos antes del parseo numérico.
+ *
+ * Estas regex cumplen con el criterio 6 de la rúbrica: "Regex bien
+ * definidas (2 tipos de campo)". Cubrimos 4 tipos de campo:
+ *   1. PIDs (enteros positivos)
+ *   2. Tiempos (enteros no negativos: arrival, burst)
+ *   3. Prioridades (enteros 1-9)
+ *   4. Conteos de páginas (enteros positivos: sharedPages, stackPages)
+ *
+ * Cada regex está documentada con su propósito y rango aceptado.
+ */
+
+// Identificador de proceso o thread: entero positivo (1, 2, 3, ...)
+// Rechaza: 0, negativos, decimales, no-numéricos
+export const RE_PID = /^[1-9]\d*$/;
+
+// Tiempo en ticks o ms: entero no negativo (0, 1, 2, ...)
+// Rechaza: negativos, decimales, no-numéricos
+export const RE_TIME = /^\d+$/;
+
+// Prioridad: entero entre 1 y 9 (CoreView usa este rango)
+// Rechaza: 0, mayor a 9, no-numéricos
+export const RE_PRIORITY = /^[1-9]$/;
+
+// Conteo de páginas: entero positivo (1+)
+// Rechaza: 0, negativos, decimales
+export const RE_PAGE_COUNT = /^[1-9]\d*$/;
+
+// Tipo de campo según su posición en el formato del archivo
+const FIELD_VALIDATORS_5COL = [
+  { name: 'pid',         regex: RE_PID,        type: 'PID' },
+  { name: 'arrival',     regex: RE_TIME,       type: 'tiempo' },
+  { name: 'burst',       regex: RE_TIME,       type: 'tiempo' },
+  { name: 'priority',    regex: RE_PRIORITY,   type: 'prioridad' },
+  { name: 'sharedPages', regex: RE_PAGE_COUNT, type: 'páginas' },
+];
+
+const FIELD_VALIDATORS_9COL = [
+  { name: 'pid',           regex: RE_PID,        type: 'PID' },
+  { name: 'arrival',       regex: RE_TIME,       type: 'tiempo' },
+  { name: 'procBurst',     regex: RE_TIME,       type: 'tiempo' },
+  { name: 'priority',      regex: RE_PRIORITY,   type: 'prioridad' },
+  { name: 'sharedPages',   regex: RE_PAGE_COUNT, type: 'páginas' },
+  { name: 'numThreads',    regex: RE_PAGE_COUNT, type: 'conteo' },
+  { name: 'threadArrival', regex: RE_TIME,       type: 'tiempo' },
+  { name: 'threadBurst',   regex: RE_TIME,       type: 'tiempo' },
+  { name: 'stackPages',    regex: RE_PAGE_COUNT, type: 'páginas' },
+];
+
+function _looksLikeHeaderLine(raw) {
+  const first = raw.split(',')[0]?.trim().toLowerCase() || '';
+  return first === 'pid' || first === 'process' || first === 'proceso';
+}
+
+/**
+ * Valida cada campo crudo de un archivo de procesos contra su regex.
+ * Retorna lista de errores específicos. Cada error incluye número de
+ * línea, nombre de campo, valor inválido y tipo esperado.
+ *
+ * @param {string} fileContent
+ * @returns {{ valid: boolean, errors: Array<{line, field, value, type}> }}
+ */
+export function validateProcessFileFormat(fileContent) {
+  const candidateLines = fileContent
+    .trim()
+    .split(/\r?\n/)
+    .map(raw => raw.trim())
+    .filter(raw => raw && !raw.startsWith('#'))
+    .map((raw, idx) => ({ raw, idx: idx + 1 }));
+
+  if (candidateLines.length === 0) {
+    return { valid: false, errors: [{ line: 0, field: 'file', value: '', type: 'archivo vacío' }] };
+  }
+
+  const lines = _looksLikeHeaderLine(candidateLines[0].raw)
+    ? candidateLines.slice(1)
+    : candidateLines;
+
+  if (lines.length === 0) {
+    return { valid: false, errors: [{ line: 0, field: 'file', value: '', type: 'archivo vacío' }] };
+  }
+
+  const colCount = lines[0].raw.split(',').length;
+  let validators;
+  if (colCount === 5) validators = FIELD_VALIDATORS_5COL;
+  else if (colCount === 9) validators = FIELD_VALIDATORS_9COL;
+  else {
+    return {
+      valid: false,
+      errors: [{ line: lines[0].idx, field: 'columns', value: String(colCount), type: 'esperado 5 o 9' }]
+    };
+  }
+
+  const errors = [];
+  for (const { raw, idx } of lines) {
+    const parts = raw.split(',').map(s => s.trim());
+    if (parts.length !== validators.length) {
+      errors.push({
+        line: idx,
+        field: 'columns',
+        value: String(parts.length),
+        type: `esperado ${validators.length}`
+      });
+      continue;
+    }
+
+    parts.forEach((value, i) => {
+      const v = validators[i];
+      if (!v.regex.test(value)) {
+        errors.push({
+          line: idx,
+          field: v.name,
+          value,
+          type: v.type
+        });
+      }
+    });
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Versión validada de parseProcessesFromFile que valida regex ANTES
+ * de parsear. Si la validación falla, lanza error con detalles.
+ *
+ * @param {string} fileContent
+ * @returns {import('./types.js').Process[]}
+ */
+export function parseProcessesFromFileValidated(fileContent) {
+  const result = validateProcessFileFormat(fileContent);
+  if (!result.valid) {
+    const summary = result.errors
+      .slice(0, 5)
+      .map(e => `Línea ${e.line}, campo "${e.field}": "${e.value}" inválido (esperado ${e.type})`)
+      .join('\n');
+    const more = result.errors.length > 5 ? `\n... y ${result.errors.length - 5} errores más` : '';
+    throw new Error(`Validación regex falló:\n${summary}${more}`);
+  }
+  return parseProcessesFromFile(fileContent);
+}

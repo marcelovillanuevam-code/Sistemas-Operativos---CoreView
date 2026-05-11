@@ -58,6 +58,7 @@ Las pruebas estan escritas en JavaScript puro y se corren con Node:
 node tests/test-scheduling.js
 node tests/test-paging.js
 node tests/test-threads.js
+node tests/integration/threads-execution.test.js
 ```
 
 ## Estructura del proyecto
@@ -85,10 +86,36 @@ El proyecto sigue una separacion en tres capas:
 2. Capa de motor (`engine/`): funciones puras que ejecutan los algoritmos. No tocan el DOM y se pueden probar en Node.
 3. Capa de renderizado (`render/`): consume las trazas generadas por el motor y las dibuja en pantalla.
 
+### Threads, Fork y Multi-Core
+
+La pantalla Threads usa un `Dispatcher` que instancia un Web Worker por thread schedulable. El Dispatcher mantiene la politica de scheduling y asigna threads a cores segun el algoritmo seleccionado; los Workers ejecutan ticks reales fuera del hilo principal del navegador.
+
+Fork se simula con `simulatedFork(parentPid)`: crea un proceso hijo schedulable, hereda atributos del padre y marca sus paginas como copy-on-write. La pantalla Memory muestra paginas COW con candado y materializa una copia visual cuando se escribe sobre una pagina compartida.
+
+Limitaciones declaradas: MLQ y MLFQ se ejecutan single-core con warning; COW es una simulacion visual y no altera las metricas de scheduling.
+
+Reporte tecnico completo:
+
+```
+docs/reporte-tecnico.md
+```
+
+Guia de defensa y captura de Workers:
+
+```
+docs/defensa-threads.md
+```
 
 ## Despliegue
 
 La aplicacion esta pensada para correr en `ubiquitous.udem.edu`. No requiere paso de build ni bundler, solo se sirven los archivos estaticos. Se usan rutas relativas para que funcione desde cualquier subdirectorio del servidor.
+
+Para Web Workers, el servidor debe servir `.js` con MIME JavaScript (`application/javascript` o `text/javascript`). En Apache, si hace falta:
+
+```
+AddType application/javascript .js
+AddType text/css .css
+```
 
 ## Requisitos
 

@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CoreView Dispatcher Test</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, Segoe UI, Arial, sans-serif;
+        background: #f4f6f9;
+        color: #172033;
+        --line: #c7d1df;
+        --ink-soft: #55647a;
+        --accent: #2364aa;
+        --ok: #167447;
+        --warn: #a35c00;
+        --bad: #a83232;
+        --surface: #ffffff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 28px;
+      }
+
+      main {
+        max-width: 1240px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 26px;
+        line-height: 1.2;
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: 16px;
+      }
+
+      label {
+        display: inline-flex;
+        gap: 7px;
+        align-items: center;
+        min-height: 38px;
+        color: var(--ink-soft);
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      select {
+        min-height: 38px;
+        border: 1px solid #aeb9c8;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #172033;
+        font: inherit;
+        padding: 7px 34px 7px 10px;
+      }
+
+      .subhead {
+        margin: 0 0 22px;
+        color: var(--ink-soft);
+      }
+
+      .toolbar,
+      .runtime {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 14px;
+      }
+
+      button {
+        min-height: 38px;
+        border: 1px solid #aeb9c8;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #172033;
+        cursor: pointer;
+        font: inherit;
+        padding: 8px 12px;
+      }
+
+      button:hover {
+        background: #edf2f8;
+      }
+
+      button.active {
+        border-color: var(--accent);
+        background: #e8f1fb;
+        color: #123e6d;
+      }
+
+      button.danger {
+        border-color: #c98b8b;
+        color: #8b1f1f;
+      }
+
+      .status-line {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        margin: 18px 0;
+      }
+
+      .stat {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        padding: 12px;
+      }
+
+      .stat b {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--ink-soft);
+        font-size: 12px;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .stat span {
+        display: block;
+        overflow-wrap: anywhere;
+        font-weight: 700;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(330px, 0.7fr);
+        gap: 18px;
+        align-items: start;
+      }
+
+      section {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        padding: 16px;
+      }
+
+      section + section {
+        margin-top: 18px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid #dce4ee;
+        padding: 8px 7px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--ink-soft);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .timeline {
+        min-height: 420px;
+        max-height: 560px;
+        margin: 0;
+        overflow: auto;
+        border: 1px solid #dce4ee;
+        border-radius: 8px;
+        background: #111827;
+        color: #e8eef7;
+        padding: 12px 12px 12px 34px;
+        font: 13px/1.5 Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      .timeline li {
+        margin-bottom: 4px;
+      }
+
+      .core-timeline {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 12px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+      }
+
+      .core-row {
+        display: grid;
+        grid-template-columns: 70px minmax(0, 1fr);
+        gap: 8px;
+        align-items: center;
+        min-width: 620px;
+      }
+
+      .core-label {
+        color: var(--ink-soft);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .core-ticks {
+        display: flex;
+        gap: 4px;
+      }
+
+      .tick {
+        min-width: 42px;
+        border-radius: 5px;
+        background: #dfe7f1;
+        color: #172033;
+        padding: 5px 7px;
+        text-align: center;
+        font: 12px/1.2 Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      .tick.idle {
+        background: #edf0f4;
+        color: #6a788c;
+      }
+
+      .ok {
+        color: var(--ok);
+        font-weight: 700;
+      }
+
+      .warn {
+        color: var(--warn);
+        font-weight: 700;
+      }
+
+      .bad {
+        color: var(--bad);
+        font-weight: 700;
+      }
+
+      .muted {
+        color: var(--ink-soft);
+      }
+
+      @media (max-width: 900px) {
+        body {
+          padding: 18px;
+        }
+
+        .layout,
+        .status-line {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>CoreView Dispatcher Test</h1>
+      <p class="subhead">Dispatcher con workers por thread y asignacion multi-core derivada del trace.</p>
+
+      <div class="toolbar" id="algorithm-buttons">
+        <button type="button" data-algo="FCFS">FCFS</button>
+        <button type="button" data-algo="SJF">SJF</button>
+        <button type="button" data-algo="RR">RR q=2</button>
+        <button type="button" data-algo="SRTF">SRTF</button>
+        <button type="button" data-algo="HRRN">HRRN</button>
+        <button type="button" data-algo="PRIORITY_NON_PREEMPTIVE">Priority NP</button>
+        <button type="button" data-algo="PRIORITY_PREEMPTIVE">Priority P</button>
+        <button type="button" data-algo="MLQ">MLQ</button>
+        <button type="button" data-algo="MLFQ">MLFQ</button>
+      </div>
+
+      <div class="runtime">
+        <label for="core-count">Cores
+          <select id="core-count">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="4">4</option>
+            <option value="8">8</option>
+          </select>
+        </label>
+        <label for="scenario-select">Caso
+          <select id="scenario-select">
+            <option value="fourAtZero">4 procesos [5,3,4,6]</option>
+            <option value="staggered">Llegadas escalonadas</option>
+            <option value="threeThreads">3 procesos / 8 cores</option>
+            <option value="singleThread">1 thread / N cores</option>
+            <option value="srtfPreempt">SRTF preemption</option>
+          </select>
+        </label>
+        <button type="button" id="pause-button">Pause</button>
+        <button type="button" id="resume-button">Resume</button>
+        <button type="button" id="stop-button" class="danger">Stop</button>
+      </div>
+
+      <div class="status-line">
+        <div class="stat">
+          <b>Algorithm</b>
+          <span id="status-algo">Idle</span>
+        </div>
+        <div class="stat">
+          <b>Cores</b>
+          <span id="status-core-count">-</span>
+        </div>
+        <div class="stat">
+          <b>Running</b>
+          <span id="status-cores">Idle</span>
+        </div>
+        <div class="stat">
+          <b>Trace order</b>
+          <span id="status-order">-</span>
+        </div>
+        <div class="stat">
+          <b>Result</b>
+          <span id="status-result">-</span>
+        </div>
+      </div>
+
+      <div class="layout">
+        <div>
+          <section>
+            <h2>Trace CPU Ticks</h2>
+            <div id="trace-strip" class="core-timeline"></div>
+            <table>
+              <thead>
+                <tr>
+                  <th>PID</th>
+                  <th>TID</th>
+                  <th>Arrival</th>
+                  <th>Burst</th>
+                  <th>Priority</th>
+                </tr>
+              </thead>
+              <tbody id="process-table"></tbody>
+            </table>
+          </section>
+
+          <section>
+            <h2>Metric Comparison</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Thread</th>
+                  <th>Trace WT</th>
+                  <th>Observed WT</th>
+                  <th>Trace TAT</th>
+                  <th>Observed TAT</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="metrics-table">
+                <tr><td colspan="6" class="muted">Run an algorithm to collect metrics.</td></tr>
+              </tbody>
+            </table>
+          </section>
+        </div>
+
+        <section>
+          <h2>Timeline Events</h2>
+          <ol id="timeline" class="timeline" aria-live="polite"></ol>
+        </section>
+      </div>
+    </main>
+
+    <script type="module">
+      import { Dispatcher } from './engine/dispatcher.js';
+
+      const SIM_SPEED_MS = 100;
+      const QUANTUM = 2;
+
+      function makeProcess(pid, arrivalTime, burstTime, priority = pid) {
+        return {
+          pid,
+          arrivalTime,
+          burstTime,
+          priority,
+          sharedPages: 2,
+          numPages: 3,
+          threads: [
+            {
+              tid: pid,
+              parentPid: pid,
+              arrivalTime,
+              burstTime,
+              priority,
+              state: 'NEW',
+              remainingTime: burstTime,
+              stackPages: 1,
+            },
+          ],
+        };
+      }
+
+      const SCENARIOS = {
+        fourAtZero: {
+          name: '4 procesos [5,3,4,6]',
+          processes: [
+            makeProcess(1, 0, 5, 2),
+            makeProcess(2, 0, 3, 1),
+            makeProcess(3, 0, 4, 3),
+            makeProcess(4, 0, 6, 2),
+          ],
+        },
+        staggered: {
+          name: 'Llegadas escalonadas',
+          processes: [
+            makeProcess(1, 0, 4, 3),
+            makeProcess(2, 3, 2, 1),
+            makeProcess(3, 6, 3, 2),
+            makeProcess(4, 9, 2, 1),
+          ],
+        },
+        threeThreads: {
+          name: '3 procesos / 8 cores',
+          processes: [
+            makeProcess(1, 0, 4, 2),
+            makeProcess(2, 0, 3, 1),
+            makeProcess(3, 0, 5, 3),
+          ],
+        },
+        singleThread: {
+          name: '1 thread / N cores',
+          processes: [
+            makeProcess(1, 0, 5, 1),
+          ],
+        },
+        srtfPreempt: {
+          name: 'SRTF preemption',
+          processes: [
+            makeProcess(1, 0, 8, 3),
+            makeProcess(2, 0, 7, 2),
+            makeProcess(3, 2, 1, 1),
+            makeProcess(4, 3, 2, 1),
+          ],
+        },
+      };
+
+      const algoButtons = document.getElementById('algorithm-buttons');
+      const coreCountSelect = document.getElementById('core-count');
+      const scenarioSelect = document.getElementById('scenario-select');
+      const pauseButton = document.getElementById('pause-button');
+      const resumeButton = document.getElementById('resume-button');
+      const stopButton = document.getElementById('stop-button');
+      const timeline = document.getElementById('timeline');
+      const processTable = document.getElementById('process-table');
+      const metricsTable = document.getElementById('metrics-table');
+      const traceStrip = document.getElementById('trace-strip');
+      const statusAlgo = document.getElementById('status-algo');
+      const statusCoreCount = document.getElementById('status-core-count');
+      const statusCores = document.getElementById('status-cores');
+      const statusOrder = document.getElementById('status-order');
+      const statusResult = document.getElementById('status-result');
+
+      let dispatcher = null;
+      let activeRunId = 0;
+      let activeTrace = null;
+      let currentAlgorithm = 'FCFS';
+      let activeProcesses = SCENARIOS.fourAtZero.processes;
+
+      function cloneProcesses() {
+        return JSON.parse(JSON.stringify(activeProcesses));
+      }
+
+      function activeScenario() {
+        return SCENARIOS[scenarioSelect.value] || SCENARIOS.fourAtZero;
+      }
+
+      function labelForTid(tid) {
+        if (tid === null || tid === undefined) return 'Idle';
+        for (const process of activeProcesses) {
+          const thread = process.threads.find(item => item.tid === tid);
+          if (thread) return `P${process.pid}`;
+        }
+        return `T${tid}`;
+      }
+
+      function formatMs(value) {
+        return `${Math.round(value)}ms`;
+      }
+
+      function formatCoreStates(coreStates) {
+        return coreStates
+          .map((core, index) => `C${index}:${core ? `${labelForTid(core.tid)}/T${core.tid}` : 'Idle'}`)
+          .join(' | ');
+      }
+
+      function logEvent(message) {
+        const li = document.createElement('li');
+        li.textContent = message;
+        timeline.appendChild(li);
+        timeline.scrollTop = timeline.scrollHeight;
+      }
+
+      function setActiveButton(algorithm) {
+        algoButtons.querySelectorAll('button').forEach(button => {
+          button.classList.toggle('active', button.dataset.algo === algorithm);
+        });
+      }
+
+      function renderProcessTable() {
+        processTable.innerHTML = '';
+        for (const process of activeProcesses) {
+          for (const thread of process.threads) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>P${process.pid}</td>
+              <td>${thread.tid}</td>
+              <td>${thread.arrivalTime}</td>
+              <td>${thread.burstTime}</td>
+              <td>${thread.priority}</td>
+            `;
+            processTable.appendChild(row);
+          }
+        }
+      }
+
+      function entryRunningTids(entry, coreCount) {
+        const tids = Array.isArray(entry.runningTids)
+          ? entry.runningTids.slice()
+          : [entry.runningTid ?? null];
+        while (tids.length < coreCount) tids.push(null);
+        if (tids.length > coreCount) tids.length = coreCount;
+        return tids;
+      }
+
+      function compactOrder(trace) {
+        const coreCount = trace.config?.numCores || 1;
+        const order = [];
+        let prev = '';
+        for (const entry of trace.timeline) {
+          const state = entryRunningTids(entry, coreCount).map(labelForTid).join('+');
+          if (state === prev) continue;
+          if (state.replaceAll('Idle', '').replaceAll('+', '') !== '') {
+            order.push(`t${entry.time}:${state}`);
+          }
+          prev = state;
+        }
+        return order.join(' > ') || 'Idle';
+      }
+
+      function renderTrace(trace) {
+        traceStrip.innerHTML = '';
+        const coreCount = trace.config?.numCores || 1;
+        for (let coreIndex = 0; coreIndex < coreCount; coreIndex += 1) {
+          const row = document.createElement('div');
+          row.className = 'core-row';
+
+          const label = document.createElement('div');
+          label.className = 'core-label';
+          label.textContent = `Core ${coreIndex}`;
+
+          const ticks = document.createElement('div');
+          ticks.className = 'core-ticks';
+
+          for (const entry of trace.timeline) {
+            const tid = entryRunningTids(entry, coreCount)[coreIndex] ?? null;
+            const tick = document.createElement('span');
+            tick.className = `tick${tid === null ? ' idle' : ''}`;
+            tick.textContent = `${entry.time}:${labelForTid(tid)}`;
+            ticks.appendChild(tick);
+          }
+
+          row.appendChild(label);
+          row.appendChild(ticks);
+          traceStrip.appendChild(row);
+        }
+      }
+
+      function withinPct(actual, expected, pct) {
+        if (actual === null || actual === undefined) return false;
+        if (expected === null || expected === undefined) return false;
+        if (expected === 0) return Math.abs(actual) <= 0.1;
+        return Math.abs(actual - expected) / Math.abs(expected) <= pct / 100;
+      }
+
+      function renderMetrics(trace, observedMetrics, totalSimMs) {
+        metricsTable.innerHTML = '';
+        const expectedTotalTicks = Math.max(...trace.threadMetrics.map(metric => metric.completionTime));
+        const expectedTotalMs = expectedTotalTicks * SIM_SPEED_MS;
+        const totalOk = withinPct(totalSimMs, expectedTotalMs, 5);
+        let metricsOk = true;
+
+        for (const expected of trace.threadMetrics) {
+          const observed = observedMetrics.find(metric => metric.tid === expected.tid);
+          const waitingOk = withinPct(observed?.waitingTime, expected.waitingTime, 10);
+          const turnaroundOk = withinPct(observed?.turnaroundTime, expected.turnaroundTime, 10);
+          const rowOk = waitingOk && turnaroundOk;
+          metricsOk = metricsOk && rowOk;
+
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${labelForTid(expected.tid)} / T${expected.tid}</td>
+            <td>${expected.waitingTime}</td>
+            <td>${observed?.waitingTime ?? 'partial'}</td>
+            <td>${expected.turnaroundTime}</td>
+            <td>${observed?.turnaroundTime ?? 'partial'}</td>
+            <td class="${rowOk ? 'ok' : 'bad'}">${rowOk ? 'OK' : 'Check'}</td>
+          `;
+          metricsTable.appendChild(row);
+        }
+
+        const totalRow = document.createElement('tr');
+        totalRow.innerHTML = `
+          <td>Total</td>
+          <td colspan="2">${formatMs(expectedTotalMs)} trace</td>
+          <td colspan="2">${formatMs(totalSimMs)} observed</td>
+          <td class="${totalOk ? 'ok' : 'warn'}">${totalOk ? 'OK' : 'Drift'}</td>
+        `;
+        metricsTable.appendChild(totalRow);
+
+        const allOk = metricsOk && totalOk;
+        statusResult.textContent = allOk ? 'OK' : 'Check metrics';
+        statusResult.className = allOk ? 'ok' : 'warn';
+      }
+
+      async function startAlgorithm(algorithm = currentAlgorithm) {
+        activeRunId += 1;
+        const runId = activeRunId;
+        currentAlgorithm = algorithm;
+        activeProcesses = activeScenario().processes;
+
+        if (dispatcher) {
+          dispatcher.stop();
+          dispatcher = null;
+        }
+
+        timeline.innerHTML = '';
+        metricsTable.innerHTML = '<tr><td colspan="6" class="muted">Running...</td></tr>';
+        statusAlgo.textContent = algorithm === 'RR' ? 'RR q=2' : algorithm;
+        statusCores.textContent = 'Starting';
+        statusResult.textContent = '-';
+        statusResult.className = '';
+        setActiveButton(algorithm);
+        renderProcessTable();
+
+        const requestedCores = Number(coreCountSelect.value);
+        const warnings = [];
+        const originalWarn = console.warn;
+        console.warn = (...args) => {
+          warnings.push(args.join(' '));
+          originalWarn.apply(console, args);
+        };
+
+        try {
+          dispatcher = new Dispatcher({
+            processes: cloneProcesses(),
+            numCores: requestedCores,
+            algorithm,
+            quantum: QUANTUM,
+            simSpeedMs: SIM_SPEED_MS,
+          });
+        } catch (error) {
+          console.warn = originalWarn;
+          statusResult.textContent = 'Error';
+          statusResult.className = 'bad';
+          logEvent(`error: ${error.message}`);
+          return;
+        }
+        console.warn = originalWarn;
+
+        activeTrace = dispatcher.trace;
+        renderTrace(activeTrace);
+        statusCoreCount.textContent = requestedCores === dispatcher.numCores
+          ? `${dispatcher.numCores}`
+          : `${requestedCores} requested / ${dispatcher.numCores} effective`;
+        statusOrder.textContent = compactOrder(activeTrace);
+        logEvent(`scenario: ${activeScenario().name}`);
+        logEvent(`trace order: ${compactOrder(activeTrace)}`);
+        for (const warning of warnings) {
+          logEvent(`warning: ${warning}`);
+        }
+
+        dispatcher
+          .onCoreUpdate(coreStates => {
+            if (runId !== activeRunId) return;
+            statusCores.textContent = formatCoreStates(coreStates);
+            logEvent(`core update -> ${statusCores.textContent}`);
+          })
+          .onThreadDone((tid, metrics) => {
+            if (runId !== activeRunId) return;
+            logEvent(`done ${labelForTid(tid)} / T${tid}: executed=${metrics.executedSoFar}, CT=${metrics.completionTime}`);
+          })
+          .onComplete((allMetrics, totalSimMs) => {
+            if (runId !== activeRunId) return;
+            logEvent(`complete: sim elapsed ${formatMs(totalSimMs)}`);
+            renderMetrics(activeTrace, allMetrics, totalSimMs);
+            statusCores.textContent = formatCoreStates(Array(dispatcher.numCores).fill(null));
+          })
+          .onError(error => {
+            if (runId !== activeRunId) return;
+            statusResult.textContent = 'Error';
+            statusResult.className = 'bad';
+            logEvent(`error: ${error.message}`);
+          });
+
+        await dispatcher.start();
+      }
+
+      algoButtons.addEventListener('click', event => {
+        const button = event.target.closest('button[data-algo]');
+        if (!button) return;
+        startAlgorithm(button.dataset.algo);
+      });
+
+      coreCountSelect.addEventListener('change', () => {
+        startAlgorithm(currentAlgorithm);
+      });
+
+      scenarioSelect.addEventListener('change', () => {
+        startAlgorithm(currentAlgorithm);
+      });
+
+      pauseButton.addEventListener('click', () => {
+        if (!dispatcher) return;
+        dispatcher.pause();
+        logEvent('paused');
+      });
+
+      resumeButton.addEventListener('click', () => {
+        if (!dispatcher) return;
+        dispatcher.resume();
+        logEvent('resumed');
+      });
+
+      stopButton.addEventListener('click', () => {
+        if (!dispatcher) return;
+        dispatcher.stop();
+        logEvent('stopped');
+      });
+
+      renderProcessTable();
+      startAlgorithm('FCFS');
+    </script>
+  </body>
+</html>
